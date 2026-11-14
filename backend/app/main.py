@@ -14,6 +14,9 @@ from typing import Any, Literal
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+
+from backend.app.harmonized_routes import register as register_harmonized_routes
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MAX_PAGE_SIZE = 1000
@@ -123,9 +126,13 @@ def create_app(root: Path | str = REPO_ROOT) -> FastAPI:
     @app.get("/api/health")
     def health() -> dict[str, Any]:
         available = {name: store.exists(name) for name in REQUIRED_FOR_HEALTH}
+        harmonized = {
+            name: store.exists(name)
+            for name in ("harmonized/harmonization_metadata.json", "analytics/calendar_5km.csv")
+        }
         return {
-            "status": "ok" if all(available.values()) else "degraded",
-            "datasets": available,
+            "status": "ok" if all(available.values()) or all(harmonized.values()) else "degraded",
+            "datasets": {**available, **harmonized},
         }
 
     @app.get("/api/metadata")
@@ -229,6 +236,13 @@ def create_app(root: Path | str = REPO_ROOT) -> FastAPI:
         )
         return _page(frame, page, page_size)
 
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_methods=["GET"],
+        allow_headers=["*"],
+    )
+    register_harmonized_routes(app, store, _jsonable)
     return app
 
 

@@ -38,6 +38,25 @@ def group_files_by_product(input_dir: Path) -> dict[str, list[Path]]:
     return groups
 
 
+def covered_ranges(files: list[Path]) -> list[list[str]]:
+    """Contiguous [start, end] date ranges covered by the downloaded windows.
+
+    Each file name carries its request window. A window with zero detections
+    still returns a (header-only) file, so file coverage = archive coverage.
+    """
+    windows = []
+    for path in files:
+        parts = path.stem.split("_")
+        windows.append((pd.Timestamp(parts[-2]), pd.Timestamp(parts[-1])))
+    merged: list[list[pd.Timestamp]] = []
+    for start, end in sorted(windows):
+        if merged and start <= merged[-1][1] + pd.Timedelta(days=1):
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return [[a.date().isoformat(), b.date().isoformat()] for a, b in merged]
+
+
 def process_product(
     files: list[Path],
     product: str,
@@ -59,6 +78,7 @@ def process_product(
     exclusions.to_csv(output_dir / f"{product}_exclusions.csv", index=False)
     return {
         "source_files": len(files),
+        "covered_ranges": covered_ranges(files),
         "loaded_records": int(len(loaded)),
         "retained_records": int(len(retained)),
         "exclusions_by_reason": {

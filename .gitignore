@@ -8,3 +8,6 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+node_modules/
+frontend/dist/
+*.log

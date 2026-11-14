@@ -1,0 +1,51 @@
+export default function MethodologyPage() {
+  return (
+    <section className="prose">
+      <h2>Methodology and limitations</h2>
+
+      <h3>What the data are</h3>
+      <p>
+        NASA FIRMS active-fire detections: MODIS (Terra and Aqua, ~1 km pixels) and VIIRS 375 m (Suomi-NPP). A detection is a
+        satellite-observed thermal anomaly. It is not a unique fire, not a measure of area burned, and some thermal anomalies come
+        from sources other than vegetation fires (for example industrial heat). FRP (fire radiative power) is not a count.
+      </p>
+
+      <h3>Why raw counts cannot be added</h3>
+      <p>
+        The sensors differ in resolution, sensitivity, overpass times, viewing geometry, detection algorithms and confidence scales.
+        In our data VIIRS reports several times more detections than MODIS for the same place and week, largely because its pixels are smaller.
+      </p>
+
+      <h3>How TerraGuard harmonizes them (method A-0.1)</h3>
+      <ol>
+        <li>Keep original FIRMS fields and sensor identity; remove only exact duplicates and invalid records.</li>
+        <li>Clip to Ghana (geoBoundaries) and assign each detection to a regular grid cell and a UTC day.</li>
+        <li>Count <b>active cell-days</b>: a day-cell pair counts once if either sensor detected activity. Detections seen by both are never double-counted, and no event-linking is claimed.</li>
+        <li>Use a constant constellation (Terra, Aqua, Suomi-NPP) across all years so changing satellite numbers do not create trends. NOAA-20/21 are available as an option.</li>
+        <li>A month is "complete" only if both sensors have records on at least 80% of its days; incomplete months are hatched and excluded from baselines.</li>
+      </ol>
+
+      <h3>Historical comparison and unusual activity</h3>
+      <p>
+        Each month is compared with the same calendar month in <i>other</i> years (median and MAD, leave-one-out). A month is flagged when its robust score
+        exceeds ±3.5, with at least five other complete years. Every flag shows the baseline, sample size and reason. Flags describe unusual history;
+        TerraGuard does not predict fires or issue alerts.
+      </p>
+
+      <h3>Limitations</h3>
+      <ul>
+        <li>The common grid does not make the sensors equivalent: VIIRS still detects more, and the two sensors agree on the same cell-day only a minority of the time.</li>
+        <li>A day with no detections is ambiguous: no fire, no overpass, cloud, or missing data.</li>
+        <li>FRP and confidence are not calibrated between sensors.</li>
+        <li>Region totals near borders are approximate (cells take the region of their centre; boundaries are simplified).</li>
+        <li>Terra's orbit has drifted in recent years, which can change observation times; this is not modelled.</li>
+        <li>No ground truth exists, so no accuracy, precision or recall is claimed.</li>
+      </ul>
+
+      <h3>Credits</h3>
+      <p>
+        Fire data: NASA FIRMS (LANCE/EOSDIS). Region boundaries: geoBoundaries (CC BY-SA 2.0). Map tiles: OpenStreetMap contributors, CARTO.
+      </p>
+    </section>
+  );
+}

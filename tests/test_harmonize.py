@@ -78,3 +78,52 @@ def test_monthly_summary_flags_insufficient_coverage() -> None:
     assert row["agreement_jaccard"] == 0.5
     assert row["days_in_month"] == 31 and row["viirs_days_with_records"] == 2
     assert not row["coverage_ok"]  # 2 of 31 days is not a complete month
+
+
+def test_regional_coverage_follows_national_coverage() -> None:
+    """A quiet region with few detection days must not be marked incomplete by itself."""
+    rows = []
+    for day in range(1, 29):  # national records every day of Feb 2024 from both sensors
+        stamp = f"2024-02-{day:02d} 10:00"
+        rows.append((7.0, -1.0, stamp, "MODIS", "Aqua", 5.0, "nominal", True))
+        rows.append((7.0, -1.0, stamp, "VIIRS", "Suomi-NPP", 1.0, "nominal", True))
+    rows.append((5.6, -0.2, "2024-02-05 10:00", "MODIS", "Aqua", 5.0, "nominal", True))  # quiet region: 1 day
+    cell_days = harmonized_cell_days(sensor_cell_days(_obs(rows), 5.0))
+    # lat 5.6 -> grid_y ~123 (the single-day cell); lat 7.0 -> grid_y ~154
+    cell_days["region"] = ["Quiet" if y < 140 else "Busy" for y in cell_days["grid_y"]]
+    assert set(cell_days["region"]) == {"Quiet", "Busy"}
+    assert len(cell_days[cell_days["region"] == "Quiet"]) == 1  # only one day of detections
+    monthly = monthly_summary(cell_days)
+    quiet = monthly[monthly["region"] == "Quiet"].iloc[0]
+    assert quiet["modis_days_with_records"] == 28 and bool(quiet["coverage_ok"])  # taken from national
+    assert bool(monthly[monthly["region"] == "Ghana"].iloc[0]["coverage_ok"])
+
+
+def test_archive_coverage_separates_missing_data_from_quiet_days() -> None:
+    from data_pipeline.harmonize import archive_coverage
+
+    covered = {
+        "MODIS_SP": [["2012-01-01", "2012-03-31"]],
+        "VIIRS_SNPP_SP": [["2012-01-20", "2012-02-29"]],  # product starts 20 Jan; ends 29 Feb
+    }
+    months = pd.Series(pd.to_datetime(["2012-01-01", "2012-02-01", "2012-03-01"]))
+    table = archive_coverage(months, covered, ("Terra", "Aqua", "Suomi-NPP"))
+    assert table.loc["2012-01-01", "viirs_archive_ok"] is False or not table.loc["2012-01-01", "viirs_archive_ok"]  # starts mid-month
+    assert bool(table.loc["2012-02-01", "modis_archive_ok"]) and bool(table.loc["2012-02-01", "viirs_archive_ok"])
+    assert not table.loc["2012-03-01", "viirs_archive_ok"]  # VIIRS files stop before month end
+    assert bool(table.loc["2012-03-01", "modis_archive_ok"])
+
+
+def test_monthly_summary_uses_archive_not_quiet_days() -> None:
+    from data_pipeline.harmonize import archive_coverage
+
+    obs = _obs([  # a single detection day each: quiet month, but archive is complete
+        (7.0, -1.0, "2024-06-10 02:04", "MODIS", "Aqua", 5.0, "nominal", True),
+        (7.0, -1.0, "2024-06-10 13:30", "VIIRS", "Suomi-NPP", 1.0, "nominal", True),
+    ])
+    cell_days = harmonized_cell_days(sensor_cell_days(obs, 1.0))
+    months = cell_days["date"].dt.to_period("M").dt.start_time
+    covered = {"MODIS_SP": [["2024-01-01", "2024-12-31"]], "VIIRS_SNPP_SP": [["2024-01-01", "2024-12-31"]]}
+    archive = archive_coverage(months, covered, ("Terra", "Aqua", "Suomi-NPP"))
+    assert bool(monthly_summary(cell_days, archive=archive).iloc[0]["coverage_ok"])
+    assert not monthly_summary(cell_days).iloc[0]["coverage_ok"]  # fallback rule would call it a gap

@@ -70,3 +70,10 @@ def test_process_keeps_sensors_separate_and_logs_exclusions(tmp_path: Path) -> N
     modis = pd.read_parquet(out / "observations" / "MODIS_SP.parquet")
     assert set(modis["sensor"]) == {"MODIS"} and set(modis["source_product"]) == {"MODIS_SP"}
     assert modis["acq_datetime"].min() == pd.Timestamp("2024-01-10 02:04")  # HHMM 204 -> 02:04 UTC
+
+
+def test_covered_ranges_merge_contiguous_windows(tmp_path: Path) -> None:
+    from data_pipeline.process import covered_ranges
+
+    names = ["MODIS_SP_2024-01-01_2024-01-05.csv", "MODIS_SP_2024-01-06_2024-01-10.csv", "MODIS_SP_2024-01-16_2024-01-20.csv"]
+    assert covered_ranges([Path(n) for n in names]) == [["2024-01-01", "2024-01-10"], ["2024-01-16", "2024-01-20"]]

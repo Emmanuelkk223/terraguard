@@ -20,6 +20,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .regions import COUNTRY_NAME, DEFAULT_ADM1, GhanaRegions
+
 HARMONIZATION_VERSION = "A-0.1"
 # Constant overpass opportunity across 2012-2025: NOAA-20 (2018) and NOAA-21
 # (2023) add overpasses that would raise counts without any change in fire.
@@ -99,7 +101,7 @@ def harmonized_cell_days(sensor_days: pd.DataFrame) -> pd.DataFrame:
     return wide
 
 
-def monthly_summary(
+def _monthly_core(
     cell_days: pd.DataFrame, *, min_coverage: float = 0.8
 ) -> pd.DataFrame:
     """Monthly index, sensor contributions and an explicit coverage rule.
@@ -142,6 +144,102 @@ def monthly_summary(
     return monthly
 
 
+PRODUCT_FOR_PLATFORM = {
+    "Terra": "MODIS_SP", "Aqua": "MODIS_SP", "Suomi-NPP": "VIIRS_SNPP_SP",
+    "NOAA-20": "VIIRS_NOAA20_SP", "NOAA-21": "VIIRS_NOAA21_SP",
+}
+
+
+def archive_coverage(
+    months: pd.Series,
+    covered_ranges: dict[str, list[list[str]]],
+    platforms: tuple[str, ...] | None,
+) -> pd.DataFrame:
+    """Per month: is the data archive complete for MODIS and for VIIRS?
+
+    A sensor is complete in a month when every selected product that already
+    existed by the end of that month has downloaded windows covering the whole
+    month, and at least one such product exists. This separates MISSING DATA
+    from genuinely quiet days, which have no detections but are not gaps.
+    """
+    chosen = set(PRODUCT_FOR_PLATFORM.values()) if platforms is None else {
+        PRODUCT_FOR_PLATFORM[p] for p in platforms
+    }
+
+    def complete(group: str, month: pd.Timestamp) -> bool:
+        start, end = month, month + pd.offsets.MonthEnd(0)
+        available, ok = 0, True
+        for product in chosen:
+            if not product.startswith(group):
+                continue
+            ranges = [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in covered_ranges.get(product, [])]
+            if not ranges or min(a for a, _ in ranges) > end:
+                continue  # product did not exist yet
+            available += 1
+            ok &= any(a <= start and b >= end for a, b in ranges)
+        return bool(available and ok)
+
+    unique = pd.Series(months.unique())
+    table = pd.DataFrame({"month": unique})
+    table["modis_archive_ok"] = [complete("MODIS", m) for m in unique]
+    table["viirs_archive_ok"] = [complete("VIIRS", m) for m in unique]
+    return table.set_index("month")
+
+
+def cell_centres(cells: pd.DataFrame, cell_size_km: float) -> pd.DataFrame:
+    """Centre longitude/latitude of grid cells (inverse of ``assign_cells``)."""
+    km_per_deg_lon = KM_PER_DEG_LON_EQUATOR * np.cos(np.radians(REFERENCE_LATITUDE))
+    result = cells.copy()
+    result["longitude"] = (result["grid_x"] + 0.5) * cell_size_km / km_per_deg_lon
+    result["latitude"] = (result["grid_y"] + 0.5) * cell_size_km / KM_PER_DEG_LAT
+    return result
+
+
+def add_region(cell_days: pd.DataFrame, cell_size_km: float, regions: GhanaRegions) -> pd.DataFrame:
+    """Label each cell with the region containing its centre (nearest if none).
+
+    A cell straddling a border takes one region, so regional totals are
+    approximate near borders; national totals are unaffected.
+    """
+    unique = cell_centres(cell_days[["grid_x", "grid_y"]].drop_duplicates(), cell_size_km)
+    unique["region"] = regions.region_for(unique["longitude"].to_numpy(), unique["latitude"].to_numpy())
+    return cell_days.merge(unique[["grid_x", "grid_y", "region"]], on=["grid_x", "grid_y"], how="left")
+
+
+def monthly_summary(
+    cell_days: pd.DataFrame,
+    *,
+    min_coverage: float = 0.8,
+    archive: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Monthly summary for all of Ghana plus each region when ``region`` exists.
+
+    With ``archive`` (from :func:`archive_coverage`) a month is complete when both
+    sensors' archives cover it. Without it, the weaker days-with-records rule is
+    used, which wrongly treats quiet days as gaps and is meant for tests only.
+    """
+    national = _monthly_core(cell_days, min_coverage=min_coverage)
+    if archive is not None:
+        national["modis_archive_ok"] = national["month"].map(archive["modis_archive_ok"]).fillna(False).astype(bool)
+        national["viirs_archive_ok"] = national["month"].map(archive["viirs_archive_ok"]).fillna(False).astype(bool)
+        national["coverage_ok"] = national["modis_archive_ok"] & national["viirs_archive_ok"]
+    national.insert(0, "region", COUNTRY_NAME)
+    parts = [national]
+    # Coverage is judged NATIONALLY: a quiet region legitimately has days with
+    # no detections, which says nothing about whether satellites observed it.
+    coverage_columns = [c for c in ["modis_days_with_records", "viirs_days_with_records", "days_in_month",
+                                    "modis_archive_ok", "viirs_archive_ok", "coverage_ok"] if c in national]
+    national_coverage = national.set_index("month")[coverage_columns]
+    if "region" in cell_days:
+        for name, group in cell_days.groupby("region", sort=True):
+            part = _monthly_core(group, min_coverage=min_coverage)
+            for column in coverage_columns:
+                part[column] = part["month"].map(national_coverage[column])
+            part.insert(0, "region", name)
+            parts.append(part)
+    return pd.concat(parts, ignore_index=True)
+
+
 def harmonize(
     observation_files: list[Path],
     output_dir: Path,
@@ -151,6 +249,8 @@ def harmonize(
     min_confidence: str | None = None,
     vegetation_only: bool = False,
     min_coverage: float = 0.8,
+    regions: GhanaRegions | None = None,
+    covered_ranges: dict[str, list[list[str]]] | None = None,
 ) -> dict[str, object]:
     selected = [
         select_observations(
@@ -160,11 +260,22 @@ def harmonize(
         for path in observation_files
     ]
     observations = pd.concat(selected, ignore_index=True)
+    outside = 0
+    if regions is not None:
+        inside = regions.inside_country(observations["longitude"].to_numpy(), observations["latitude"].to_numpy())
+        outside = int((~inside).sum())
+        observations = observations[inside].reset_index(drop=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     grids: dict[str, object] = {}
     for size in cell_sizes_km:
         cell_days = harmonized_cell_days(sensor_cell_days(observations, size))
-        monthly = monthly_summary(cell_days, min_coverage=min_coverage)
+        if regions is not None:
+            cell_days = add_region(cell_days, size, regions)
+        archive = None
+        if covered_ranges is not None:
+            months = cell_days["date"].dt.to_period("M").dt.start_time
+            archive = archive_coverage(months, covered_ranges, platforms)
+        monthly = monthly_summary(cell_days, min_coverage=min_coverage, archive=archive)
         label = f"{size:g}km"
         cell_days.to_parquet(output_dir / f"cell_days_{label}.parquet", index=False)
         monthly.to_csv(output_dir / f"monthly_{label}.csv", index=False)
@@ -179,7 +290,10 @@ def harmonize(
         "min_confidence": min_confidence,
         "vegetation_only": vegetation_only,
         "min_coverage": min_coverage,
+        "coverage_rule": "archive coverage of every selected product for the whole month" if covered_ranges is not None else "days with records (fallback)",
         "observations_used": int(len(observations)),
+        "observations_outside_ghana_excluded": outside,
+        "spatial_clip": "union of geoBoundaries ADM1 (simplified)" if regions is not None else "none (bounding box only)",
         "grids": grids,
         "notes": [
             "Active cell-days are not unique fires; co-detected cell-days count once.",
@@ -200,8 +314,15 @@ def main() -> None:
     parser.add_argument("--min-confidence", choices=list(CONFIDENCE_RANK))
     parser.add_argument("--vegetation-only", action="store_true")
     parser.add_argument("--min-coverage", type=float, default=0.8)
+    parser.add_argument("--boundary", type=Path, default=DEFAULT_ADM1,
+                        help="ADM1 GeoJSON for clipping/regions; pass a missing path to skip")
     args = parser.parse_args()
     files = sorted(args.input_dir.glob("*.parquet"))
+    processing_meta = args.input_dir.parent / "metadata.json"
+    covered = None
+    if processing_meta.exists():
+        products = json.loads(processing_meta.read_text(encoding="utf-8")).get("products", {})
+        covered = {name: info.get("covered_ranges", []) for name, info in products.items()}
     if not files:
         raise SystemExit(f"No processed parquet files in {args.input_dir}")
     print(json.dumps(harmonize(
@@ -209,6 +330,8 @@ def main() -> None:
         platforms=None if args.all_platforms else STABLE_PLATFORMS,
         min_confidence=args.min_confidence, vegetation_only=args.vegetation_only,
         min_coverage=args.min_coverage,
+        regions=GhanaRegions(args.boundary) if args.boundary.exists() else None,
+        covered_ranges=covered,
     ), indent=2))
 
 
