@@ -127,3 +127,24 @@ def test_monthly_summary_uses_archive_not_quiet_days() -> None:
     archive = archive_coverage(months, covered, ("Terra", "Aqua", "Suomi-NPP"))
     assert bool(monthly_summary(cell_days, archive=archive).iloc[0]["coverage_ok"])
     assert not monthly_summary(cell_days).iloc[0]["coverage_ok"]  # fallback rule would call it a gap
+
+
+def test_region_months_without_detections_are_zero_not_missing() -> None:
+    """A quiet region must have a zero row for months where only other regions had detections."""
+    from data_pipeline.harmonize import fill_missing_months
+
+    rows = [
+        (7.0, -1.0, "2024-01-10 02:04", "MODIS", "Aqua", 5.0, "nominal", True),   # busy region, January
+        (7.0, -1.0, "2024-02-10 02:04", "MODIS", "Aqua", 5.0, "nominal", True),   # busy region, February
+        (5.6, -0.2, "2024-01-12 02:04", "MODIS", "Aqua", 5.0, "nominal", True),   # quiet region, January only
+    ]
+    cell_days = harmonized_cell_days(sensor_cell_days(_obs(rows), 5.0))
+    cell_days["region"] = ["Quiet" if y < 140 else "Busy" for y in cell_days["grid_y"]]
+    monthly = monthly_summary(cell_days)
+    quiet = monthly[monthly["region"] == "Quiet"].sort_values("month")
+    national = monthly[monthly["region"] == "Ghana"]
+    assert len(quiet) == len(national) == 2  # February exists for Quiet, with zero activity
+    assert quiet.iloc[1]["active_cell_days"] == 0 and quiet.iloc[0]["active_cell_days"] == 1
+    assert quiet["days_in_month"].notna().all()
+    filled = fill_missing_months(national.iloc[:1].drop(columns="region"), national["month"])
+    assert len(filled) == 2

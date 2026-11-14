@@ -218,3 +218,39 @@ td.hi { color: #ff9aa9; } td.lo { color: #9cc8ff; }
   .stat-value { font-size: 1.5rem; }
   .brand h1 { font-size: 1.35rem; }
 }
+
+/* ---- period bar, area tools, chips (square, dark) ---- */
+input[type="date"], input[type="number"] {
+  background: var(--panel); color: var(--text); border: 1px solid var(--line-strong); padding: 6px 8px;
+  font: inherit; font-size: .9rem; color-scheme: dark;
+}
+input[type="date"]:hover, input[type="number"]:hover { border-color: var(--amber); }
+input:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.period-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin: 6px 0 4px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--teal); }
+.period-bar label, .area-tools label.coord {
+  display: flex; flex-direction: column; gap: 3px; font-size: .66rem; text-transform: uppercase; letter-spacing: .12em; color: var(--muted);
+}
+.period-bar .seg { margin: 0; }
+button.tool {
+  background: transparent; color: var(--text); border: 1px solid var(--line-strong); padding: 7px 12px; cursor: pointer;
+  font-size: .76rem; text-transform: uppercase; letter-spacing: .08em; font-weight: 700;
+}
+button.tool:hover { border-color: var(--amber); color: var(--amber); }
+button.tool.on { background: var(--amber); color: #190d03; border-color: var(--amber); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+.area-tools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 0 0 10px; padding: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.area-tools input[type="number"] { width: 92px; }
+.area-tools .error.inline { padding: 4px 8px; font-size: .78rem; }
+.map-wrap.drawing .map { outline: 2px dashed var(--amber); outline-offset: -2px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; background: rgba(242, 184, 75, .12); border: 1px solid var(--amber);
+  color: var(--amber); padding: 7px 10px; font-size: .9rem; text-transform: none; letter-spacing: 0; min-width: 130px;
+}
+.chip-x { background: none; border: 0; color: var(--amber); cursor: pointer; font-size: .9rem; padding: 0 2px; margin-left: auto; }
+.chip-x:hover { color: #fff; }
+.ok-text { color: #8fd7a6; } .warn-text { color: var(--amber); }
+
+.updating {
+  position: fixed; top: 12px; right: 16px; z-index: 1200; background: var(--amber); color: #190d03; padding: 5px 12px;
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .14em; font-weight: 800;
+}

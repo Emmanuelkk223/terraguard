@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "./services/api";
-import type { AnnualRow, CalRow, Grid, HarmonizationMeta, SeasonalRow, Selection, Validation } from "./types";
+import type {
+  AnnualRow, AreaQuery, CalRow, Grid, HarmonizationMeta, SeasonalRow, Selection, Sensor, Validation,
+} from "./types";
 import Overview from "./pages/Overview";
 import CalendarPage from "./pages/CalendarPage";
 import HistoricalPage from "./pages/HistoricalPage";
@@ -20,12 +22,22 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
+const SENSOR_LABEL: Record<Sensor, string> = {
+  harmonized: "Both sensors (harmonized)",
+  modis: "MODIS only",
+  viirs: "VIIRS only",
+};
+
 export default function App() {
   const [tab, setTab] = useState<Tab>("overview");
   const [grid, setGrid] = useState<Grid>("5km");
   const [region, setRegion] = useState("Ghana");
+  const [bbox, setBbox] = useState<string | null>(null);
+  const [sensor, setSensor] = useState<Sensor>("harmonized");
   const [regions, setRegions] = useState<string[]>(["Ghana"]);
   const [rows, setRows] = useState<CalRow[]>([]);
+  const [rowsBoth, setRowsBoth] = useState<CalRow[]>([]);
+  const [anomalies, setAnomalies] = useState<CalRow[]>([]);
   const [annual, setAnnual] = useState<AnnualRow[]>([]);
   const [seasonal, setSeasonal] = useState<SeasonalRow[]>([]);
   const [meta, setMeta] = useState<HarmonizationMeta | null>(null);
@@ -33,6 +45,10 @@ export default function App() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const q: AreaQuery = useMemo(() => ({ grid, region, bbox, sensor }), [grid, region, bbox, sensor]);
+  const areaName = bbox ? "Custom area" : region;
+  const heading = sensor === "harmonized" ? areaName : `${areaName} · ${SENSOR_LABEL[sensor]}`;
 
   useEffect(() => {
     api.harmonization().then(setMeta).catch(() => setMeta(null));
@@ -47,12 +63,18 @@ export default function App() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([api.calendar(grid, region), api.annual(grid, region), api.seasonal(grid, region)])
-      .then(([c, a, s]) => {
+    Promise.all([
+      api.calendar(q), api.annual(q), api.seasonal(q), api.anomalies(q),
+      // The sensor-comparison page always needs both sensors, whatever view is selected.
+      sensor === "harmonized" ? Promise.resolve(null) : api.calendar({ ...q, sensor: "harmonized" }),
+    ])
+      .then(([c, a, s, an, both]) => {
         if (cancelled) return;
         setRows(c);
         setAnnual(a);
         setSeasonal(s);
+        setAnomalies(an);
+        setRowsBoth(both ?? c);
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -65,13 +87,15 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [grid, region]);
+  }, [q, sensor]);
 
   const openFromAnomaly = (s: Selection) => {
     setSelection(s);
     setTab("calendar");
   };
 
+  // Keep the current page mounted while new data loads, so a chosen period and map position survive view changes.
+  const ready = !error && (rows.length > 0 || !loading);
   return (
     <div className="app">
       <header className="top">
@@ -85,8 +109,21 @@ export default function App() {
         <div className="controls">
           <label>
             Area
-            <select value={region} onChange={(e) => { setRegion(e.target.value); }}>
-              {regions.map((r) => <option key={r}>{r}</option>)}
+            {bbox ? (
+              <span className="chip" title={`West, south, east, north: ${bbox}`}>
+                Custom area
+                <button type="button" className="chip-x" onClick={() => setBbox(null)} aria-label="Clear custom area">✕</button>
+              </span>
+            ) : (
+              <select value={region} onChange={(e) => setRegion(e.target.value)}>
+                {regions.map((r) => <option key={r}>{r}</option>)}
+              </select>
+            )}
+          </label>
+          <label>
+            Sensor view
+            <select value={sensor} onChange={(e) => setSensor(e.target.value as Sensor)}>
+              {(Object.keys(SENSOR_LABEL) as Sensor[]).map((s) => <option key={s} value={s}>{SENSOR_LABEL[s]}</option>)}
             </select>
           </label>
           <label>
@@ -105,14 +142,16 @@ export default function App() {
         ))}
       </nav>
       <main>
-        {loading && <p className="muted">Loading…</p>}
+        {loading && (rows.length ? <span className="updating" role="status">Updating…</span> : <p className="muted">Loading…</p>)}
         {error && <p className="error" role="alert">{error}</p>}
-        {!loading && !error && tab === "overview" && <Overview rows={rows} annual={annual} region={region} onOpenCalendar={() => setTab("calendar")} />}
-        {!loading && !error && tab === "calendar" && <CalendarPage rows={rows} grid={grid} region={region} selection={selection} onSelect={setSelection} />}
-        {!loading && !error && tab === "historical" && <HistoricalPage annual={annual} seasonal={seasonal} region={region} />}
-        {!loading && !error && tab === "sensors" && <SensorsPage rows={rows} meta={meta} validation={validation} grid={grid} region={region} />}
-        {!loading && !error && tab === "anomalies" && <AnomaliesPage rows={rows} region={region} onOpen={openFromAnomaly} />}
-        {!loading && !error && tab === "data" && <DataPage grid={grid} region={region} meta={meta} />}
+        {ready && tab === "overview" && <Overview rows={rows} annual={annual} region={heading} onOpenCalendar={() => setTab("calendar")} />}
+        {ready && tab === "calendar" && (
+          <CalendarPage rows={rows} q={q} heading={heading} selection={selection} onSelect={setSelection} onBbox={setBbox} />
+        )}
+        {ready && tab === "historical" && <HistoricalPage annual={annual} seasonal={seasonal} region={heading} />}
+        {ready && tab === "sensors" && <SensorsPage rows={rowsBoth} meta={meta} validation={validation} grid={grid} region={areaName} />}
+        {ready && tab === "anomalies" && <AnomaliesPage rows={anomalies} region={heading} onOpen={openFromAnomaly} />}
+        {ready && tab === "data" && <DataPage q={q} meta={meta} />}
         {tab === "method" && <MethodologyPage />}
       </main>
       <footer>

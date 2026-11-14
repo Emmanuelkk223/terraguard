@@ -1,7 +1,21 @@
 import { useMemo, useState } from "react";
-import type { CalRow, Selection } from "../types";
+import type { CalRow, Selection, Status } from "../types";
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const flagged = (s?: Status | null) => s === "unusually_high" || s === "unusually_low";
+
+/** Does each sensor's own history also flag this month? Agreement is stronger evidence than one sensor alone. */
+function Corroboration({ row }: { row: CalRow }) {
+  const parts = [["MODIS", row.modis_status], ["VIIRS", row.viirs_status]] as const;
+  const seen = parts.filter(([, s]) => flagged(s)).map(([n]) => n);
+  if (row.modis_status === undefined && row.viirs_status === undefined) return <>–</>;
+  return (
+    <span title="Whether this month is also unusual when each sensor is analysed on its own">
+      {seen.length === 2 ? <b className="ok-text">Both sensors</b> : seen.length === 1 ? <b className="warn-text">{seen[0]} only</b> : <span className="muted">Neither alone</span>}
+    </span>
+  );
+}
 
 export default function AnomaliesPage({ rows, region, onOpen }: { rows: CalRow[]; region: string; onOpen: (s: Selection) => void }) {
   const [dir, setDir] = useState<"all" | "high" | "low">("all");
@@ -26,7 +40,7 @@ export default function AnomaliesPage({ rows, region, onOpen }: { rows: CalRow[]
       </div>
       {!list.length ? <p className="muted">No months flagged for this selection.</p> : (
         <table className="table">
-          <thead><tr><th>Month</th><th>Active cell-days</th><th>Median</th><th>Δ%</th><th>Score</th><th>Why flagged</th></tr></thead>
+          <thead><tr><th>Month</th><th>Active cell-days</th><th>Median</th><th>Δ%</th><th>Score</th><th>Also unusual in</th><th>Why flagged</th></tr></thead>
           <tbody>
             {list.slice(0, 100).map((r) => (
               <tr key={`${r.region}-${r.year}-${r.month}`}>
@@ -35,6 +49,7 @@ export default function AnomaliesPage({ rows, region, onOpen }: { rows: CalRow[]
                 <td>{r.baseline_median === null ? "–" : Math.round(r.baseline_median).toLocaleString("en-GB")}</td>
                 <td>{r.pct_diff === null ? "–" : `${r.pct_diff > 0 ? "+" : ""}${Math.round(r.pct_diff)}%`}</td>
                 <td className={r.status === "unusually_high" ? "hi" : "lo"}>{r.robust_score === null ? "–" : r.robust_score.toFixed(1)}</td>
+                <td><Corroboration row={r} /></td>
                 <td className="why">{r.explanation}</td>
               </tr>
             ))}

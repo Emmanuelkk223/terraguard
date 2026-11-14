@@ -57,6 +57,9 @@ class DataStore:
     def csv(self, relative: str) -> pd.DataFrame:
         return self._load(relative, pd.read_csv)
 
+    def parquet(self, relative: str) -> pd.DataFrame:
+        return self._load(relative, pd.read_parquet)
+
     def json(self, relative: str) -> Any:
         return self._load(relative, lambda p: json.loads(p.read_text(encoding="utf-8")))
 

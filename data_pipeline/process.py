@@ -78,6 +78,11 @@ def process_product(
     exclusions.to_csv(output_dir / f"{product}_exclusions.csv", index=False)
     return {
         "source_files": len(files),
+        "missing_values": {
+            column: int(loaded[column].isna().sum())
+            for column in ("latitude", "longitude", "acq_date", "acq_time", "satellite", "confidence", "frp", "type", "daynight")
+            if column in loaded
+        },
         "covered_ranges": covered_ranges(files),
         "loaded_records": int(len(loaded)),
         "retained_records": int(len(retained)),

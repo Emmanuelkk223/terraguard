@@ -19,7 +19,8 @@ and VIIRS data, and presents it as an interactive **burning activity calendar**,
 | **MODIS–VIIRS harmonization** (common grid + UTC day, active cell-days) | `data_pipeline/harmonize.py` |
 | Same-month median/MAD baselines, flags with explanations | `data_pipeline/calendar_analytics.py` |
 | Read-only API, CSV exports with provenance headers | `backend/app/` |
-| Dashboard: calendar, map, history, sensors, anomalies, downloads | `frontend/` |
+| Dashboard: calendar with day/week drill-down and date ranges, map with pinned cell details, sensor views (harmonized / MODIS / VIIRS), custom area drawing, history, sensors, anomalies with cross-sensor corroboration, data-quality panel, downloads | `frontend/` |
+| On-demand analytics for any sensor view, region or bounding box | `data_pipeline/area_analytics.py` |
 
 How the harmonization works, and why raw counts are never added, is in [docs/methodology.md](docs/methodology.md).
 

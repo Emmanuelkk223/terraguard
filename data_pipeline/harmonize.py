@@ -186,6 +186,28 @@ def archive_coverage(
     return table.set_index("month")
 
 
+COUNT_COLUMNS = [
+    "active_cell_days", "both_cell_days", "modis_only_cell_days", "viirs_only_cell_days",
+    "modis_detections", "viirs_detections", "modis_days_with_records", "viirs_days_with_records",
+    "modis_cell_days", "viirs_cell_days",
+]
+
+
+def fill_missing_months(part: pd.DataFrame, months: pd.Series) -> pd.DataFrame:
+    """Reindex a monthly table to ``months``, treating absent months as zero activity.
+
+    A month with no detections produces no cell-day rows, so it silently vanishes from a
+    group-by. For a region or area that is genuine zero activity (the archive covers the
+    month) and must be part of its baseline and calendar, not a gap.
+    """
+    full_index = pd.Index(pd.Series(months).drop_duplicates().sort_values(), name="month")
+    filled = part.set_index("month").reindex(full_index)
+    for column in COUNT_COLUMNS:
+        if column in filled:
+            filled[column] = filled[column].fillna(0).astype("int64")
+    return filled.reset_index()
+
+
 def cell_centres(cells: pd.DataFrame, cell_size_km: float) -> pd.DataFrame:
     """Centre longitude/latitude of grid cells (inverse of ``assign_cells``)."""
     km_per_deg_lon = KM_PER_DEG_LON_EQUATOR * np.cos(np.radians(REFERENCE_LATITUDE))
@@ -232,7 +254,7 @@ def monthly_summary(
     national_coverage = national.set_index("month")[coverage_columns]
     if "region" in cell_days:
         for name, group in cell_days.groupby("region", sort=True):
-            part = _monthly_core(group, min_coverage=min_coverage)
+            part = fill_missing_months(_monthly_core(group, min_coverage=min_coverage), national["month"])
             for column in coverage_columns:
                 part[column] = part["month"].map(national_coverage[column])
             part.insert(0, "region", name)

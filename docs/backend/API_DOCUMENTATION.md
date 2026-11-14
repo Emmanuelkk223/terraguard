@@ -103,3 +103,22 @@ returns 503.
 | `GET /api/export/cells.csv` | One month's cells as CSV with `#` provenance header lines |
 
 CORS allows the Vite dev origins (`localhost:5173`); the dev server also proxies `/api`.
+
+## Sensor views, custom areas, periods and series
+
+All analytic endpoints accept `sensor=harmonized|modis|viirs` and an area: either `region=<name>` or a custom
+`bbox=west,south,east,north` (degrees; a bbox overrides `region`). The default view of a named region is served from
+precomputed files; every other combination is computed on demand from the same cell-day table with the same code, then cached.
+A single-sensor view uses that sensor's own archive coverage (for example January 2012 is complete for MODIS).
+
+| Endpoint | Added behaviour |
+|---|---|
+| `GET /api/calendar`, `/api/seasonal`, `/api/annual` | `sensor`, `bbox` |
+| `GET /api/calendar/anomalies` | `sensor`, `bbox`; each row adds `modis_status` and `viirs_status`, the status of the same month in each sensor's own series (cross-sensor corroboration) |
+| `GET /api/map/cells` | `start`/`end` dates (or `year`/`month`), `sensor`, `bbox`; `active_days` counts days with a detection in the chosen view |
+| `GET /api/series` | Daily (up to 1,100 days) or weekly active cell-days for `start`..`end`, with per-sensor columns and a `value` for the chosen view |
+| `GET /api/quality` | Records per product, exclusions by reason, missing values per field, sensor mix, incomplete months |
+| `GET /api/export/calendar.csv`, `/cells.csv`, `/series.csv` | Same parameters; headers record area, sensor view, grid and period |
+
+Invalid `bbox`, unknown region or sensor, reversed dates, or a daily range that is too long return 422. A valid area with no
+detections returns zero-valued rows, not an error.

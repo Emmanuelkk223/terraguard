@@ -2,7 +2,7 @@ import {
   Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import type { AnnualRow, CalRow, SeasonalRow } from "../types";
+import type { AnnualRow, CalRow, SeasonalRow, SeriesRow } from "../types";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const AXIS = { stroke: "#8fa0b3", fontSize: 12 };
@@ -101,6 +101,38 @@ export function AgreementChart({ rows }: { rows: CalRow[] }) {
         <Tooltip contentStyle={TIP} formatter={(v: number) => `${(v * 100).toFixed(1)}%`} />
         <Line dataKey="agreement" name="Cell-days seen by both sensors" stroke="#f6c453" dot={false} strokeWidth={2} />
       </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+interface SeriesProps {
+  data: SeriesRow[];
+  interval: "day" | "week";
+  onPick: (row: SeriesRow) => void;
+}
+
+/** Daily or weekly active cell-days for the chosen period. Click a bar to zoom the map to it. */
+export function SeriesChart({ data, interval, onPick }: SeriesProps) {
+  return (
+    <ResponsiveContainer width="100%" height={240}>
+      <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barCategoryGap={interval === "day" ? 1 : 3}>
+        <CartesianGrid stroke={GRID} vertical={false} />
+        <XAxis dataKey="period_start" {...AXIS} minTickGap={28} tickFormatter={(v: string) => v.slice(5)} />
+        <YAxis {...AXIS} width={56} />
+        <Tooltip
+          contentStyle={TIP}
+          cursor={{ fill: "rgba(242,184,75,.12)" }}
+          labelFormatter={(v: string) => (interval === "week" ? `Week of ${v}` : v)}
+          formatter={(v: number, _n, p) => [
+            `${v.toLocaleString("en-GB")} (MODIS ${p.payload.modis_cell_days.toLocaleString("en-GB")}, VIIRS ${p.payload.viirs_cell_days.toLocaleString("en-GB")}, both ${p.payload.both_cell_days.toLocaleString("en-GB")})`,
+            "Active cell-days",
+          ]}
+        />
+        <Bar
+          dataKey="value" name="Active cell-days" fill="#ea7a2b" cursor="pointer"
+          onClick={(d: unknown) => onPick(((d as { payload?: SeriesRow }).payload ?? d) as SeriesRow)}
+        />
+      </BarChart>
     </ResponsiveContainer>
   );
 }

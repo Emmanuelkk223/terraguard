@@ -30,7 +30,17 @@ Adding raw counts would mix a change in instrument with a change in fire.
    add overpasses that would raise counts without any change in fire. They can be included with `--all-platforms`.
 8. **Monthly coverage.** A month is *complete* when the downloaded archive covers the whole month for every selected product that
    existed by then. A day with no detections is **not** treated as missing data, because quiet seasons legitimately have such days.
-   Regions inherit the national coverage flag.
+   Regions and custom areas inherit the national coverage flag. A month in which an area has no detections is a **zero**, not a gap,
+   and is part of that area's baseline and calendar (an earlier version silently dropped such months, which biased quiet regions'
+   baselines upward; fixed and covered by tests).
+
+### Sensor views and custom areas
+
+The dashboard can show the harmonized index (either sensor), MODIS only or VIIRS only. A single-sensor view re-runs the same
+calendar and baseline analysis on that sensor's cell-days and uses that sensor's own archive coverage. Flagged months report
+whether each sensor *alone* also finds the month unusual, as corroboration. Any region or user-drawn bounding box (cells assigned
+by cell centre) can be analysed the same way, on demand. Daily and weekly series count active cell-days per day, or per day
+within the week.
 
 ## 3. Historical comparison and unusual activity (`calendar_analytics.py`)
 
