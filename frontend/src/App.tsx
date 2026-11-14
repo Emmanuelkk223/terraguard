@@ -76,7 +76,7 @@ export default function App() {
     <div className="app">
       <header className="top">
         <div className="brand">
-          <span className="logo" aria-hidden="true">◈</span>
+          <span className="logo" aria-hidden="true">TG</span>
           <div>
             <h1>TerraGuard</h1>
             <p>Turning satellite fire observations into actionable environmental intelligence</p>
