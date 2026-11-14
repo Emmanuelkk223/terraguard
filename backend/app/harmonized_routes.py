@@ -158,6 +158,11 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
             },
         }
 
+    @app.get("/api/model-comparison")
+    def model_comparison() -> dict[str, Any]:
+        """Baseline vs Isolation Forest comparison (see data_pipeline/model_comparison.py)."""
+        return store.json("analytics/model_comparison.json")
+
     @app.get("/api/regions")
     def regions(grid: Grid = "5km") -> dict[str, Any]:
         names = sorted(known_regions(grid))
@@ -199,6 +204,11 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
         else:
             frame = seasonal_summary(calendar_frame(grid, region, sensor, bbox))
         return {"grid": grid, "region": area_label(region, bbox), "data": jsonable(frame)}
+
+    @app.get("/api/seasonal/regions")
+    def seasonal_regions(grid: Grid = "5km") -> dict[str, Any]:
+        """Seasonal statistics for every region at once (harmonized view), for regional comparison."""
+        return {"grid": grid, "data": jsonable(analytics("seasonal", grid))}
 
     @app.get("/api/annual")
     def annual(grid: Grid = "5km", region: str = "Ghana", sensor: Sensor = "harmonized",

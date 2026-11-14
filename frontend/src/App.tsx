@@ -148,9 +148,9 @@ export default function App() {
         {ready && tab === "calendar" && (
           <CalendarPage rows={rows} q={q} heading={heading} selection={selection} onSelect={setSelection} onBbox={setBbox} />
         )}
-        {ready && tab === "historical" && <HistoricalPage annual={annual} seasonal={seasonal} region={heading} />}
+        {ready && tab === "historical" && <HistoricalPage annual={annual} seasonal={seasonal} rows={rows} grid={grid} region={heading} />}
         {ready && tab === "sensors" && <SensorsPage rows={rowsBoth} meta={meta} validation={validation} grid={grid} region={areaName} />}
-        {ready && tab === "anomalies" && <AnomaliesPage rows={anomalies} region={heading} onOpen={openFromAnomaly} />}
+        {ready && tab === "anomalies" && <AnomaliesPage rows={anomalies} region={heading} area={bbox ? "Custom area" : region} onOpen={openFromAnomaly} />}
         {ready && tab === "data" && <DataPage q={q} meta={meta} />}
         {tab === "method" && <MethodologyPage />}
       </main>

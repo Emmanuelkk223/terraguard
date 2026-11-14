@@ -85,3 +85,21 @@ def test_validation_detects_shared_year_to_year_signal() -> None:
     # After removing seasonality, only a genuinely shared anomaly keeps the sensors correlated.
     assert shared["cell_days"]["spearman_deseasonalised"] > independent["cell_days"]["spearman_deseasonalised"] + 0.2
     assert set(shared["agreement_share_both_by_year"]) == set(range(2015, 2022))
+
+
+def test_flag_in_small_counts_carries_a_caution() -> None:
+    quiet = build_calendar(_monthly({2013: 5, 2014: 6, 2015: 4, 2016: 5, 2017: 6, 2018: 5, 2019: 4, 2020: 5, 2021: 600}))
+    row = quiet[quiet["year"] == 2021].iloc[0]
+    assert row["status"] == "unusually_high" and "Counts are small" in row["explanation"]
+    busy = build_calendar(_monthly({2013: 500, 2014: 600, 2015: 400, 2016: 500, 2017: 600, 2018: 500, 2019: 400, 2020: 500, 2021: 60000}))
+    assert "Counts are small" not in busy[busy["year"] == 2021].iloc[0]["explanation"]
+    assert "calibrated" in busy[busy["year"] == 2021].iloc[0]["explanation"]
+
+
+def test_default_threshold_follows_baseline_size() -> None:
+    from data_pipeline.calibration import threshold_for
+
+    cal = build_calendar(_monthly({2013: 100, 2014: 110, 2015: 90, 2016: 105, 2017: 95, 2018: 100, 2019: 98, 2020: 400}))
+    row = cal[cal["year"] == 2020].iloc[0]
+    assert row["baseline_n"] == 7 and row["threshold"] == threshold_for(7)
+    assert build_calendar(_monthly({2013: 100, 2014: 110, 2015: 90, 2016: 105, 2017: 95, 2018: 100, 2019: 98, 2020: 400}), threshold=3.5)["threshold"].eq(3.5).all()

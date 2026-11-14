@@ -166,3 +166,34 @@ export interface Validation {
   grids: Record<string, GridValidation>;
   overpass_hour_by_year?: Record<string, Record<string, number>>;
 }
+
+export type Method = "stat" | "if_raw" | "if_deseason";
+export type Factor = "x3" | "x2" | "div3";
+
+export interface AreaComparison {
+  train_months: number;
+  test_months: number;
+  flags: Record<Method, string[]>;
+  flag_counts: Record<Method, number>;
+  unscorable_by_stat: number;
+  jaccard_stat_vs_if_raw: number | null;
+  jaccard_stat_vs_if_deseason: number | null;
+  spearman_abs_stat_vs_if: Record<string, number | null>;
+}
+
+export interface MethodComparison {
+  protocol: Record<string, unknown>;
+  areas: Record<string, AreaComparison>;
+  pooled: {
+    areas: number;
+    test_months: number;
+    flag_rate_on_heldout_months: Record<Method, number | null>;
+    synthetic_injection: {
+      months_per_factor: number;
+      stat_scorable_share: number | null;
+      detection_rate: Record<Factor, Record<Method, number | null>>;
+      auc: Record<Factor, Record<Method, number | null>>;
+    };
+  };
+  notes: string[];
+}

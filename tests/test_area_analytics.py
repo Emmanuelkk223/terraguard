@@ -22,7 +22,7 @@ def _observations() -> pd.DataFrame:
     rows = []
     for year in range(2013, 2021):
         for month in (1, 2, 7):
-            n_north = 4 + (year % 3) + (6 if (year == 2018 and month == 1) else 0)
+            n_north = 4 + (year % 3) + (100 if (year == 2018 and month == 1) else 0)
             for i in range(n_north):  # northern cells, both sensors
                 stamp = f"{year}-{month:02d}-10 02:04"
                 rows.append((9.0 + i * 0.1, -1.0, stamp, "MODIS", "Aqua", 5.0, "nominal", True))
@@ -56,7 +56,7 @@ def test_select_cells_by_region_and_bbox(tables) -> None:
     cell_days, _ = tables
     north = select_cells(cell_days, 5.0, region="North")
     assert set(north["region"]) == {"North"} and len(north) < len(cell_days)
-    boxed = select_cells(cell_days, 5.0, bbox=(-3.0, 8.0, 1.0, 11.0))
+    boxed = select_cells(cell_days, 5.0, bbox=(-3.0, 8.0, 1.0, 25.0))
     assert set(boxed["region"]) == {"North"}
     assert select_cells(cell_days, 5.0, bbox=(10.0, 40.0, 11.0, 41.0)).empty
 
@@ -74,7 +74,7 @@ def test_on_demand_region_calendar_matches_precomputed_pipeline(tables) -> None:
 
 def test_bbox_area_includes_zero_months_and_flags_the_outlier(tables) -> None:
     cell_days, monthly = tables
-    cal = area_calendar(cell_days, 5.0, monthly, bbox=(-3.0, 8.0, 1.0, 11.0))
+    cal = area_calendar(cell_days, 5.0, monthly, bbox=(-3.0, 8.0, 1.0, 25.0))
     assert (cal["region"] == "Custom area").all()
     assert len(cal) == monthly[monthly["region"] == "Ghana"]["month"].nunique()
     flagged = cal[cal["status"] == "unusually_high"]

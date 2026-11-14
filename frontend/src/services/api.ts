@@ -1,5 +1,5 @@
 import type {
-  AnnualRow, AreaQuery, CalRow, CellCollection, HarmonizationMeta, Period, Quality, SeasonalRow, SeriesRow, Validation,
+  AnnualRow, AreaQuery, CalRow, CellCollection, HarmonizationMeta, MethodComparison, Period, Quality, SeasonalRow, SeriesRow, Validation,
 } from "../types";
 
 export class ApiError extends Error {
@@ -49,6 +49,8 @@ export const api = {
   boundaries: () => getJSON<GeoJSON.FeatureCollection>("boundaries"),
   harmonization: () => getJSON<HarmonizationMeta>("harmonization"),
   validation: () => getJSON<Validation>("validation"),
+  modelComparison: () => getJSON<MethodComparison>("model-comparison"),
+  seasonalAllRegions: (grid: AreaQuery["grid"]) => getJSON<{ data: SeasonalRow[] }>("seasonal/regions", { grid }).then((r) => r.data),
 };
 
 export function exportUrl(kind: "calendar" | "cells" | "series", q: AreaQuery, extra: Params = {}): string {

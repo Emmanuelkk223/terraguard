@@ -20,7 +20,9 @@ from data_pipeline.harmonize import harmonized_cell_days, monthly_summary, senso
 
 def _build(root: Path) -> None:
     rows = []
-    for year, n in zip(range(2015, 2021), (3, 4, 5, 4, 3, 12)):
+    # Eight Januaries: a short quiet history, then one decisive jump (60 cells vs 3-5). The calibrated
+    # threshold needs a longer baseline to call anything unusual, so a 2015-2020 history would be too short.
+    for year, n in zip(range(2013, 2021), (3, 4, 5, 4, 3, 4, 5, 60)):
         for i in range(n):  # n distinct cells on one day each January
             rows.append((7.0 + i * 0.1, -1.0, f"{year}-01-10 02:04", "MODIS", "Aqua", 5.0, "nominal", True))
             rows.append((7.0 + i * 0.1, -1.0, f"{year}-01-10 13:30", "VIIRS", "Suomi-NPP", 1.0, "nominal", True))
@@ -72,7 +74,7 @@ def test_map_cells_and_exports(tmp_path: Path) -> None:
     assert export.headers["content-type"].startswith("text/csv")
     assert "# area: Northern" in export.text and "version T-0" in export.text
     parsed = pd.read_csv(io.StringIO(export.text), comment="#")
-    assert set(parsed["region"]) == {"Northern"} and len(parsed) == 6
+    assert set(parsed["region"]) == {"Northern"} and len(parsed) == 8
     assert client.get("/api/export/cells.csv", params={"year": 2020, "month": 1}).status_code == 200
 
 

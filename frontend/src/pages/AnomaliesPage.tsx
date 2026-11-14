@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import MethodComparisonPanel from "../components/MethodComparisonPanel";
 import type { CalRow, Selection, Status } from "../types";
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -17,7 +18,7 @@ function Corroboration({ row }: { row: CalRow }) {
   );
 }
 
-export default function AnomaliesPage({ rows, region, onOpen }: { rows: CalRow[]; region: string; onOpen: (s: Selection) => void }) {
+export default function AnomaliesPage({ rows, region, area, onOpen }: { rows: CalRow[]; region: string; area: string; onOpen: (s: Selection) => void }) {
   const [dir, setDir] = useState<"all" | "high" | "low">("all");
   const list = useMemo(
     () =>
@@ -56,6 +57,7 @@ export default function AnomaliesPage({ rows, region, onOpen }: { rows: CalRow[]
           </tbody>
         </table>
       )}
+      <MethodComparisonPanel area={area} />
     </section>
   );
 }

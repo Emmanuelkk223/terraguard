@@ -114,7 +114,7 @@ export default function CalendarPage({ rows, q, heading, selection, onSelect, on
 
       <div className="split">
         {singleMonth ? (
-          <MonthDetail row={row} />
+          <MonthDetail row={row} rows={rows} />
         ) : (
           <aside className="detail" aria-live="polite">
             <h3>{period ? `${period.start} → ${period.end}` : "No period"}</h3>

@@ -1,3 +1,4 @@
+import { BaselineChart } from "./Charts";
 import type { CalRow, Status } from "../types";
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -16,7 +17,7 @@ const STATUS_TEXT: Record<Status, { label: string; tone: string }> = {
   below_flat_baseline: { label: "Below a flat baseline (no score)", tone: "muted" },
 };
 
-export default function MonthDetail({ row }: { row: CalRow | null }) {
+export default function MonthDetail({ row, rows }: { row: CalRow | null; rows: CalRow[] }) {
   if (!row) return <aside className="detail muted">Select a month in the calendar to compare it with the same month in other years.</aside>;
   const s = STATUS_TEXT[row.status];
   return (
@@ -39,6 +40,12 @@ export default function MonthDetail({ row }: { row: CalRow | null }) {
         <dt>VIIRS cell-days{row.coverage_ok ? "" : " (partial)"}</dt><dd>{fmt(row.viirs_cell_days)}</dd>
         <dt>Seen by both{row.coverage_ok ? "" : " (partial)"}</dt><dd>{fmt(row.both_cell_days)}</dd>
       </dl>
+      {row.coverage_ok && (
+        <>
+          <div className="mini-title">How this month compares with history</div>
+          <BaselineChart rows={rows} row={row} />
+        </>
+      )}
       <p className="explain">{row.explanation}</p>
     </aside>
   );

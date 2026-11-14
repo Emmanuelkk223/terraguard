@@ -27,8 +27,9 @@ export default function MethodologyPage() {
 
       <h3>Historical comparison and unusual activity</h3>
       <p>
-        Each month is compared with the same calendar month in <i>other</i> years (median and MAD, leave-one-out). A month is flagged when its robust score
-        exceeds ±3.5, with at least five other complete years. Every flag shows the baseline, sample size and reason. Flags describe unusual history;
+        Each month is compared with the same calendar month in <i>other</i> years (median and MAD of the other years). A month is flagged when its robust score
+        exceeds a threshold calibrated to the baseline size (so ordinary months are falsely flagged about 1% of the time), with at least five other
+        complete years. Scores use a log scale. Short baselines can only flag very large changes. Every flag shows the baseline, sample size and reason. Flags describe unusual history;
         TerraGuard does not predict fires or issue alerts.
       </p>
 

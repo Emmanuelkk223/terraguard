@@ -2,7 +2,10 @@
 
 For every region and calendar month, each year's value is compared with the
 median/MAD of the SAME calendar month in OTHER years (leave-one-out), using
-only months that passed the coverage rule. Every result carries its baseline
+only months that passed the coverage rule. Scores are computed on a log scale
+(activity varies multiplicatively and is right-skewed) and compared with a
+threshold CALIBRATED to the baseline size, so ordinary months are falsely flagged
+about 1% of the time (see calibration.py). Every result carries its baseline
 sample size, a reliability flag and a plain-language explanation.
 
 These are descriptions of unusual HISTORICAL satellite-detected activity.
@@ -19,9 +22,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-MAD_SCALE = 1.4826  # makes MAD comparable to a standard deviation for normal data
-DEFAULT_THRESHOLD = 3.5  # conventional modified z-score cut-off (Iglewicz & Hoaglin)
+from .calibration import MAD_SCALE, TARGET_FALSE_FLAG_RATE, threshold_for
+
+DEFAULT_THRESHOLD = None  # None = calibrated to the baseline size; a number forces a fixed threshold
 VALUE = "active_cell_days"
+SMALL_COUNT = 30  # below this typical level, percentage swings are routine
 
 
 def _status(value: float, median: float, mad: float, n: int, score: float,
@@ -58,12 +63,17 @@ def _explain(row: dict) -> str:
     if status in ("above_flat_baseline", "below_flat_baseline"):
         return base + " Past years showed no variation, so a score cannot be computed."
     if status in ("unusually_high", "unusually_low"):
-        return base + f" Robust score {row['robust_score']:+.1f} exceeds the ±{row['threshold']:g} threshold."
-    return base + f" Robust score {row['robust_score']:+.1f}: within the usual range."
+        text = base + (f" Robust score {row['robust_score']:+.1f} (log scale) exceeds ±{row['threshold']:.1f}, the threshold "
+                       f"calibrated for a {int(row['baseline_n'])}-year baseline so that ordinary months are falsely flagged about "
+                       f"{TARGET_FALSE_FLAG_RATE:.0%} of the time.")
+        if row["baseline_median"] < SMALL_COUNT:
+            text += " Counts are small here, so large percentage changes are common; treat this flag with extra caution."
+        return text
+    return base + f" Robust score {row['robust_score']:+.1f} (log scale), within the usual range (±{row['threshold']:.1f})."
 
 
 def build_calendar(
-    monthly: pd.DataFrame, *, min_samples: int = 5, threshold: float = DEFAULT_THRESHOLD
+    monthly: pd.DataFrame, *, min_samples: int = 5, threshold: float | None = DEFAULT_THRESHOLD
 ) -> pd.DataFrame:
     """Return one row per region-month with baseline, difference and status."""
     frame = monthly.copy()
@@ -80,10 +90,15 @@ def build_calendar(
             median = float(np.median(peers)) if n else np.nan
             mad = float(np.median(np.abs(peers - median))) if n else np.nan
             value = float(row[VALUE])
-            score = (value - median) / (MAD_SCALE * mad) if n and mad > 0 else np.nan
+            # Score on the log scale; median/MAD above stay in cell-days for display.
+            log_peers = np.log1p(peers)
+            log_median = float(np.median(log_peers)) if n else np.nan
+            log_mad = float(np.median(np.abs(log_peers - log_median))) if n else np.nan
+            score = (np.log1p(value) - log_median) / (MAD_SCALE * log_mad) if n and log_mad > 0 else np.nan
+            limit = threshold if threshold is not None else threshold_for(n)
             status, reliable = _status(
-                value, median, mad, n, score, coverage_ok=bool(row["coverage_ok"]),
-                min_samples=min_samples, threshold=threshold,
+                value, median, log_mad, n, score, coverage_ok=bool(row["coverage_ok"]),
+                min_samples=min_samples, threshold=limit,
             )
             abs_diff = value - median if n else np.nan
             pct = abs_diff / median * 100 if n and median > 0 else np.nan
@@ -102,7 +117,7 @@ def build_calendar(
                 "coverage_ok": bool(row["coverage_ok"]),
                 "baseline_n": n, "baseline_median": median, "baseline_mad": mad,
                 "abs_diff": abs_diff, "pct_diff": pct, "robust_score": score,
-                "threshold": threshold, "status": status, "reliable": reliable,
+                "threshold": limit, "status": status, "reliable": reliable,
             }
             record["explanation"] = _explain(record)
             records.append(record)
@@ -135,7 +150,7 @@ def seasonal_summary(cal: pd.DataFrame) -> pd.DataFrame:
 
 
 def run(monthly_csv: Path, output_dir: Path, *, min_samples: int = 5,
-        threshold: float = DEFAULT_THRESHOLD) -> dict[str, object]:
+        threshold: float | None = DEFAULT_THRESHOLD) -> dict[str, object]:
     label = monthly_csv.stem.removeprefix("monthly_")
     cal = build_calendar(pd.read_csv(monthly_csv), min_samples=min_samples, threshold=threshold)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -147,7 +162,8 @@ def run(monthly_csv: Path, output_dir: Path, *, min_samples: int = 5,
     return {
         "grid": label, "rows": int(len(cal)), "flagged": int(len(flagged)),
         "status_counts": {str(k): int(v) for k, v in cal["status"].value_counts().items()},
-        "min_baseline_years": min_samples, "threshold": threshold, "mad_scale": MAD_SCALE,
+        "min_baseline_years": min_samples, "threshold": threshold if threshold is not None else "calibrated to baseline size",
+        "target_false_flag_rate": TARGET_FALSE_FLAG_RATE, "score_scale": "log1p", "mad_scale": MAD_SCALE,
         "baseline": "same calendar month in other years, coverage-complete months only (leave-one-out)",
     }
 
@@ -157,7 +173,7 @@ def main() -> None:
     parser.add_argument("--harmonized-dir", type=Path, default=Path("data/processed/harmonized"))
     parser.add_argument("--output-dir", type=Path, default=Path("data/processed/analytics"))
     parser.add_argument("--min-samples", type=int, default=5)
-    parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
+    parser.add_argument("--threshold", type=float, default=None, help="Fixed threshold; default is calibrated to the baseline size")
     args = parser.parse_args()
     files = sorted(args.harmonized_dir.glob("monthly_*km.csv"))
     if not files:

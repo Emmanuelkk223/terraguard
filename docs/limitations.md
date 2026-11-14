@@ -31,11 +31,14 @@ TerraGuard is a prototype for exploring satellite-detected burning activity. Rea
 **Statistics**
 - Baselines use few observations per region-month (at most one per year). The robust score is a screening aid; at region level,
   small counts make flags less stable. Flags are labelled with their baseline size and reliability.
-- On the full series about 4% of region-months are flagged at the 3.5 threshold (5 km grid: 118 of 2,655; 104 high, 14 low),
-  far more than a normal distribution would give. Monthly counts are right-skewed and the baseline has at most 13 values, so treat
-  flags as a screening aid, not a verdict. The threshold has not been tuned against any labelled data.
-- No ground-truth labels exist, so classification metrics are not reported, and the Isolation Forest experiment in `ml/` is not
-  used by the dashboard.
+- A fixed "3.5" threshold falsely flags 2-12% of ordinary months with 5-13 baseline years, so TerraGuard calibrates the threshold to the
+  baseline size for a 1% false-flag rate on ordinary months (see methodology). The calibration assumes Gaussian noise on the log scale;
+  real data may have heavier tails. On the full series 32 of 2,782 scored region-months are flagged (1.15%), many of them the same
+  December 2025 event seen in several regions, so independent findings are fewer than flags. Short baselines (5-7 years) can only
+  flag very large changes. Flags remain a screening aid, not a verdict.
+- No ground-truth labels exist, so classification metrics are not reported. Isolation Forest is compared with the baseline
+  (`model_comparison.py`) on agreement, stability and a synthetic sensitivity test only; it shows no clear advantage and is not used
+  to produce the dashboard's flags. The older sensor-level experiment in `ml/` is likewise not used.
 
 **Not provided**
 - No fire prediction, early warning, burned-area mapping or statements about specific fires, communities or damage.

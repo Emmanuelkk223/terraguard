@@ -47,15 +47,46 @@ within the week.
 For each region and calendar month, a month's value is compared with the **same calendar month in other years** (leave-one-out),
 using complete months only:
 
-- baseline = median and MAD of the other years;
-- robust score = (value - median) / (1.4826 x MAD);
-- flagged "unusually high/low" when |score| >= 3.5 (the conventional modified z-score cut-off) **and** at least 5 other complete
-  years exist;
+- baseline = median and MAD of the other years (shown in cell-days);
+- robust score = (log1p(value) - median of log1p(others)) / (1.4826 x MAD of log1p(others)); the log scale is used because activity
+  is right-skewed and varies multiplicatively;
+- flagged "unusually high/low" when |score| exceeds a threshold **calibrated to the baseline size** (see below) **and** at least 5
+  other complete years exist;
 - if the baseline has no spread (MAD = 0) no score is invented: the month is labelled above/below a flat baseline and not flagged;
 - every row carries the baseline sample size, percentage and absolute difference, a reliability flag and a text explanation.
 
 This describes unusual *historical* activity. It is not a forecast, an alert or a validated classifier; no ground-truth labels
 exist, so no accuracy, precision or recall is reported.
+
+### Why the threshold is calibrated
+
+The usual "modified z-score above 3.5" rule assumes a large sample. With the 5-13 other years available per calendar month, median/MAD
+scores have heavy tails. Simulation (`data_pipeline/calibration.py`, tested) shows that a fixed 3.5 falsely flags ordinary months
+about **2.4%** of the time with 13 baseline years, **6.9%** with 7 and **12%** with 5 (more for skewed data), so most flags under that
+rule could be chance. TerraGuard instead uses, for each baseline size, the threshold at which ordinary (Gaussian, on the log scale)
+months are falsely flagged about **1%** of the time: 14.3 for 5 baseline years, 7.8 for 7, 4.4 for 13, 3.5 for 20. Short baselines
+therefore need very large changes before anything is called unusual. This calibration assumes Gaussian noise on the log scale;
+real series can have heavier tails, so the realised false-flag rate can be higher. On the full 2012-2025 data the calibrated rule
+flags 32 of 2,782 scored region-months (1.15%), compared with 118 (4.2%) under the fixed rule. Nationally one month survives:
+December 2025 (-56%), flagged in both sensors independently. Many of the regional flags are the same December 2025 event seen in
+10 of the 17 areas (Ghana as a whole plus 9 regions), so the number of independent findings is smaller than the number of flags (22 of the 32 flags are outside December 2025).
+
+### Baseline versus Isolation Forest
+
+`python -m data_pipeline.model_comparison` (also part of `run_all`) compares the baseline with Isolation Forest, fitted on 2012-2019 and
+applied unchanged to 2020-2025 for all 17 areas (1,224 held-out months). With no ground-truth labels, it reports agreement, how
+often each method flags ordinary held-out months, and a clearly labelled **synthetic** sensitivity test that scales real months up
+or down one at a time. Because each method ships with a different alarm threshold, ranking power is compared threshold-free (AUC):
+
+| Change applied to a real month | Baseline | Isolation Forest (raw) | Isolation Forest (deseasonalised) |
+|---|---|---|---|
+| tripled | 0.82 | 0.83 | 0.84 |
+| doubled | 0.70 | 0.72 | 0.70 |
+| cut to a third | 0.85 | 0.72 | 0.88 |
+
+Isolation Forest brings no clear ranking advantage (within 0.03 AUC of the baseline wherever it is not worse), flags 5-11% of ordinary
+held-out months against 2.4% for the baseline, and cannot say why it flagged a month. The explainable baseline therefore remains the
+primary method. The two methods agree on December 2025 and otherwise overlap little (Jaccard 0.09 nationally).
 
 ## 4. Validation performed
 

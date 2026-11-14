@@ -14,6 +14,7 @@ from .calendar_analytics import run as run_analytics
 from .harmonize import STABLE_PLATFORMS, harmonize
 from .process import process
 from .regions import DEFAULT_ADM1, GhanaRegions
+from .model_comparison import compare as compare_models
 from .validation import run as run_validation
 
 
@@ -26,11 +27,11 @@ def main() -> None:
     parser.add_argument("--all-platforms", action="store_true", help="Include NOAA-20/21 (constellation changes over time)")
     args = parser.parse_args()
 
-    print("1/4 processing raw files ...", flush=True)
+    print("1/5 processing raw files ...", flush=True)
     meta = process(args.raw_dir, args.output_dir)
     covered = {name: info["covered_ranges"] for name, info in meta["products"].items()}
 
-    print("2/4 harmonizing ...", flush=True)
+    print("2/5 harmonizing ...", flush=True)
     harmonized = harmonize(
         sorted((args.output_dir / "observations").glob("*.parquet")),
         args.output_dir / "harmonized",
@@ -40,7 +41,7 @@ def main() -> None:
         covered_ranges=covered,
     )
 
-    print("3/4 calendar analytics ...", flush=True)
+    print("3/5 calendar analytics ...", flush=True)
     summaries = [
         run_analytics(path, args.output_dir / "analytics")
         for path in sorted((args.output_dir / "harmonized").glob("monthly_*km.csv"))
@@ -48,9 +49,15 @@ def main() -> None:
     (args.output_dir / "analytics" / "analytics_metadata.json").write_text(
         json.dumps(summaries, indent=2), encoding="utf-8"
     )
-    print("4/4 validation ...", flush=True)
+    print("4/5 validation ...", flush=True)
     run_validation(args.output_dir / "harmonized", args.output_dir / "observations",
                    args.output_dir / "analytics" / "validation.json")
+
+    print("5/5 baseline vs Isolation Forest comparison ...", flush=True)
+    import pandas as pd
+
+    comparison = compare_models(pd.read_csv(args.output_dir / "analytics" / "calendar_5km.csv"))
+    (args.output_dir / "analytics" / "model_comparison.json").write_text(json.dumps(comparison, indent=2), encoding="utf-8")
 
     print(json.dumps({"observations_used": harmonized["observations_used"], "analytics": summaries}, indent=2))
 

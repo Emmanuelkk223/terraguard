@@ -25,7 +25,7 @@ def _observations() -> pd.DataFrame:
     rows = []
     for year in range(2013, 2021):
         for month in (1, 2, 7):
-            n = 4 + (year % 3) + (6 if (year == 2018 and month == 1) else 0)
+            n = 4 + (year % 3) + (100 if (year == 2018 and month == 1) else 0)
             for i in range(n):
                 stamp = f"{year}-{month:02d}-10 02:04"
                 rows.append((9.0 + i * 0.1, -1.0, stamp, "MODIS", "Aqua", 5.0, "nominal", True))
@@ -72,7 +72,7 @@ def test_sensor_views_change_the_series(client: TestClient) -> None:
 
 
 def test_custom_bbox_calendar_seasonal_annual_and_validation(client: TestClient) -> None:
-    box = "-3.0,8.0,1.0,11.0"
+    box = "-3.0,8.0,1.0,25.0"
     cal = client.get("/api/calendar", params={"bbox": box}).json()
     assert cal["region"] == "Custom area" and cal["total"] > 0
     jan_2018 = next(r for r in cal["data"] if r["year"] == 2018 and r["month"] == 1)
@@ -126,11 +126,36 @@ def test_quality_endpoint(client: TestClient) -> None:
 
 
 def test_exports_carry_area_sensor_and_period(client: TestClient) -> None:
-    cal = client.get("/api/export/calendar.csv", params={"bbox": "-3,8,1,11", "sensor": "viirs"})
-    assert "# area: custom bounding box (west,south,east,north) -3,8,1,11" in cal.text and "# sensor view: viirs" in cal.text
+    cal = client.get("/api/export/calendar.csv", params={"bbox": "-3,8,1,25", "sensor": "viirs"})
+    assert "# area: custom bounding box (west,south,east,north) -3,8,1,25" in cal.text and "# sensor view: viirs" in cal.text
     parsed = pd.read_csv(io.StringIO(cal.text), comment="#")
     assert set(parsed["region"]) == {"Custom area"}
     cells = client.get("/api/export/cells.csv", params={"start": "2018-01-01", "end": "2018-01-31", "sensor": "modis"})
     assert "# period: 2018-01-01 to 2018-01-31" in cells.text
     series = client.get("/api/export/series.csv", params={"start": "2018-01-01", "end": "2018-01-31", "interval": "week"})
     assert "# interval: week" in series.text and len(pd.read_csv(io.StringIO(series.text), comment="#")) >= 4
+
+
+def test_model_comparison_endpoint_serves_the_report_or_503(client: TestClient, tmp_path: Path) -> None:
+    assert client.get("/api/model-comparison").status_code == 503  # not generated yet
+    report = {"pooled": {"areas": 1}, "notes": ["No ground-truth labels exist."]}
+    (tmp_path / "data" / "processed" / "analytics" / "model_comparison.json").write_text(json.dumps(report), encoding="utf-8")
+    response = client.get("/api/model-comparison")
+    assert response.status_code == 200 and response.json() == report
+
+
+def test_model_comparison_report_is_strict_json() -> None:
+    import json as _json
+    from data_pipeline.model_comparison import compare
+    report = compare(pd.concat([_series_for_comparison("A"), _series_for_comparison("B")]))
+    text = _json.dumps(report, allow_nan=False)  # raises if any NaN/inf slipped through
+    assert "synthetic_injection" in text
+
+
+def _series_for_comparison(region: str) -> pd.DataFrame:
+    import numpy as np
+    season = np.array([300, 280, 200, 120, 60, 30, 25, 30, 50, 90, 180, 280], dtype=float)
+    rows = [{"region": region, "year": y, "month": m, "coverage_ok": True, "active_cell_days": season[m - 1],
+             "modis_cell_days": season[m - 1] * 0.3, "viirs_cell_days": season[m - 1] * 0.9}
+            for y in range(2012, 2026) for m in range(1, 13)]
+    return pd.DataFrame(rows)  # perfectly flat per month: exercises the unscorable / NaN paths

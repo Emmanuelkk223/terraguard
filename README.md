@@ -17,7 +17,8 @@ and VIIRS data, and presents it as an interactive **burning activity calendar**,
 | Validation, UTC timestamps, de-duplication, per-product confidence classes | `data_pipeline/process.py`, `pipeline.py` |
 | Ghana clipping and 16-region assignment (geoBoundaries) | `data_pipeline/regions.py` |
 | **MODIS–VIIRS harmonization** (common grid + UTC day, active cell-days) | `data_pipeline/harmonize.py` |
-| Same-month median/MAD baselines, flags with explanations | `data_pipeline/calendar_analytics.py` |
+| Same-month median/MAD baselines with a calibrated threshold, flags with explanations | `data_pipeline/calendar_analytics.py`, `calibration.py` |
+| Baseline vs Isolation Forest comparison (no labels: agreement, stability, synthetic sensitivity) | `data_pipeline/model_comparison.py` |
 | Read-only API, CSV exports with provenance headers | `backend/app/` |
 | Dashboard: calendar with day/week drill-down and date ranges, map with pinned cell details, sensor views (harmonized / MODIS / VIIRS), custom area drawing, history, sensors, anomalies with cross-sensor corroboration, data-quality panel, downloads | `frontend/` |
 | On-demand analytics for any sensor view, region or bounding box | `data_pipeline/area_analytics.py` |

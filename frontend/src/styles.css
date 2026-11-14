@@ -254,3 +254,14 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   position: fixed; top: 12px; right: 16px; z-index: 1200; background: var(--amber); color: #190d03; padding: 5px 12px;
   font-size: .7rem; text-transform: uppercase; letter-spacing: .14em; font-weight: 800;
 }
+
+/* ---- priority 2: season controls, year chips, method panel ---- */
+.control-row { margin: 8px 0 14px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--green); }
+.control-row label { display: flex; flex-direction: column; gap: 8px; font-size: .88rem; color: #c3cfdb; }
+input[type="range"] { width: min(420px, 100%); accent-color: var(--amber); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.chip-btn { background: var(--panel); color: var(--muted); border: 1px solid var(--line-strong); padding: 5px 11px; cursor: pointer; font: inherit; font-size: .84rem; font-weight: 600; }
+.chip-btn:hover { border-color: var(--amber); color: var(--text); }
+.chip-btn.on { background: var(--amber); color: #190d03; border-color: var(--amber); }
+.mini-title { font-size: .68rem; text-transform: uppercase; letter-spacing: .12em; color: var(--amber); font-weight: 700; margin: 14px 0 4px; border-top: 1px solid var(--line); padding-top: 12px; }
+.method-panel { margin-top: 8px; }
