@@ -94,3 +94,22 @@ export interface HarmonizationMeta {
   };
   analytics?: { grid: string; flagged: number; rows: number; threshold: number; min_baseline_years: number }[];
 }
+
+export interface SeriesValidation {
+  spearman_raw_series: number | null;
+  spearman_deseasonalised: number | null;
+  ratio_viirs_over_modis_mean: number;
+  ratio_cv: number | null;
+}
+
+export interface GridValidation {
+  months: number;
+  raw_detections: SeriesValidation;
+  cell_days: SeriesValidation;
+  agreement_share_both_by_year: Record<string, number>;
+}
+
+export interface Validation {
+  grids: Record<string, GridValidation>;
+  overpass_hour_by_year?: Record<string, Record<string, number>>;
+}

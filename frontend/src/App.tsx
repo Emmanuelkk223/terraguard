@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "./services/api";
-import type { AnnualRow, CalRow, Grid, HarmonizationMeta, SeasonalRow, Selection } from "./types";
+import type { AnnualRow, CalRow, Grid, HarmonizationMeta, SeasonalRow, Selection, Validation } from "./types";
 import Overview from "./pages/Overview";
 import CalendarPage from "./pages/CalendarPage";
 import HistoricalPage from "./pages/HistoricalPage";
@@ -29,12 +29,14 @@ export default function App() {
   const [annual, setAnnual] = useState<AnnualRow[]>([]);
   const [seasonal, setSeasonal] = useState<SeasonalRow[]>([]);
   const [meta, setMeta] = useState<HarmonizationMeta | null>(null);
+  const [validation, setValidation] = useState<Validation | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.harmonization().then(setMeta).catch(() => setMeta(null));
+    api.validation().then(setValidation).catch(() => setValidation(null));
   }, []);
 
   useEffect(() => {
@@ -108,7 +110,7 @@ export default function App() {
         {!loading && !error && tab === "overview" && <Overview rows={rows} annual={annual} region={region} onOpenCalendar={() => setTab("calendar")} />}
         {!loading && !error && tab === "calendar" && <CalendarPage rows={rows} grid={grid} region={region} selection={selection} onSelect={setSelection} />}
         {!loading && !error && tab === "historical" && <HistoricalPage annual={annual} seasonal={seasonal} region={region} />}
-        {!loading && !error && tab === "sensors" && <SensorsPage rows={rows} meta={meta} region={region} />}
+        {!loading && !error && tab === "sensors" && <SensorsPage rows={rows} meta={meta} validation={validation} grid={grid} region={region} />}
         {!loading && !error && tab === "anomalies" && <AnomaliesPage rows={rows} region={region} onOpen={openFromAnomaly} />}
         {!loading && !error && tab === "data" && <DataPage grid={grid} region={region} meta={meta} />}
         {tab === "method" && <MethodologyPage />}

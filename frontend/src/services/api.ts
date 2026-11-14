@@ -1,5 +1,5 @@
 import type {
-  AnnualRow, CalRow, CellCollection, Grid, HarmonizationMeta, SeasonalRow,
+  AnnualRow, CalRow, CellCollection, Grid, HarmonizationMeta, SeasonalRow, Validation,
 } from "../types";
 
 export class ApiError extends Error {
@@ -38,6 +38,7 @@ export const api = {
     getJSON<CellCollection>("map/cells", { grid, year, month, region: region === "Ghana" ? undefined : region }),
   boundaries: () => getJSON<GeoJSON.FeatureCollection>("boundaries"),
   harmonization: () => getJSON<HarmonizationMeta>("harmonization"),
+  validation: () => getJSON<Validation>("validation"),
 };
 
 export function exportUrl(kind: "calendar" | "cells", params: Record<string, string | number | undefined>): string {

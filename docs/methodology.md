@@ -49,11 +49,33 @@ exist, so no accuracy, precision or recall is reported.
 
 ## 4. Validation performed
 
+Run `python -m data_pipeline.validation` (also part of `run_all`); results are in `data/processed/analytics/validation.json` and on
+the *Sensor harmonization* page. On the full 2012-2025 Ghana series (167 complete months, national):
+
+| Measure | Raw detections | Active cell-days (5 km) |
+|---|---|---|
+| Rank correlation MODIS vs VIIRS, raw series | 0.98 | 0.98 |
+| Rank correlation, **deseasonalised** (shared year-to-year change) | 0.77 | 0.76 |
+| Mean VIIRS / MODIS ratio | 10.8 | 9.2 |
+| Variability of that ratio (CV) | 1.07 | 1.04 |
+
+Reading: the two sensors share real year-to-year signal (deseasonalised correlation about 0.77), but converting to cell-days does
+**not** measurably improve their mutual consistency, and the VIIRS/MODIS ratio is far from constant, so a single calibration
+factor is not justified. The benefit of cell-days is conceptual (no pixel-size inflation, no double counting of co-detections),
+not an empirical gain in agreement. The share of cell-days seen by both sensors is small: 8% of all cell-days at 1 km, 13% at
+2 km and 17% at 5 km (activity-weighted), and about 2-8% in a typical month.
+
+Other checks:
+
 - Unit tests for grid assignment, UTC day assignment, double-count avoidance, per-sensor preservation, filters, coverage rules,
-  baselines, flat-baseline handling, region assignment and API contracts.
-- A regression test that failed under the earlier per-region coverage rule (which mislabelled quiet regions as missing data).
-- Comparison of raw VIIRS/MODIS ratios against cell-day ratios and sensor agreement at 1, 2 and 5 km, shown on the
-  *Sensor harmonization* page.
+  baselines, flat-baseline handling, region assignment, validation statistics and API contracts.
+- Regression tests for two coverage-rule bugs found on real data (per-region coverage mislabelled quiet regions; a days-with-records
+  rule would have excluded every rainy season).
+- Orbit drift (daytime detections, median UTC hour): Terra 10.7 h (2019) to 9.6 h (2025), Aqua 13.6 h to 14.7 h (all months); Suomi-NPP, NOAA-20
+  and NOAA-21 stay near 13.4-13.5 h.
+- December 2025 is flagged nationally as unusually low. All five platforms (including the independent NOAA-20 and NOAA-21) fall by
+  roughly 58-75% against December 2024, with data present on all 31 days, so it is not a single-sensor or orbit artefact. The data
+  alone cannot say whether burning really fell or a shared processing effect exists.
 
 ## 5. What the harmonization does not do
 

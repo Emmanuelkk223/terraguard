@@ -22,7 +22,7 @@ export default function MethodologyPage() {
         <li>Clip to Ghana (geoBoundaries) and assign each detection to a regular grid cell and a UTC day.</li>
         <li>Count <b>active cell-days</b>: a day-cell pair counts once if either sensor detected activity. Detections seen by both are never double-counted, and no event-linking is claimed.</li>
         <li>Use a constant constellation (Terra, Aqua, Suomi-NPP) across all years so changing satellite numbers do not create trends. NOAA-20/21 are available as an option.</li>
-        <li>A month is "complete" only if both sensors have records on at least 80% of its days; incomplete months are hatched and excluded from baselines.</li>
+        <li>A month is "complete" only when the downloaded data archive covers all of it for every selected sensor product. A day with no detections is not treated as missing data. Incomplete months are hatched and excluded from baselines and from any comparison.</li>
       </ol>
 
       <h3>Historical comparison and unusual activity</h3>
@@ -34,11 +34,12 @@ export default function MethodologyPage() {
 
       <h3>Limitations</h3>
       <ul>
-        <li>The common grid does not make the sensors equivalent: VIIRS still detects more, and the two sensors agree on the same cell-day only a minority of the time.</li>
+        <li>The common grid does not make the sensors equivalent: VIIRS still detects far more, and the two sensors flag the same cell on the same day only a small minority of the time.</li>
         <li>A day with no detections is ambiguous: no fire, no overpass, cloud, or missing data.</li>
         <li>FRP and confidence are not calibrated between sensors.</li>
         <li>Region totals near borders are approximate (cells take the region of their centre; boundaries are simplified).</li>
-        <li>Terra's orbit has drifted in recent years, which can change observation times; this is not modelled.</li>
+        <li>Terra and Aqua overpass times have drifted by about 65 minutes in opposite directions since 2019 (measured on the Sensor harmonization page), which can create apparent trends in the MODIS series. The default series is anchored on Suomi-NPP, whose overpass time is stable, but the drift is not corrected for.</li>
+        <li>Converting to cell-days does not make the two sensors measurably more consistent than raw counts do (see the validation table); its benefit is conceptual, not an observed gain in agreement.</li>
         <li>No ground truth exists, so no accuracy, precision or recall is claimed.</li>
       </ul>
 

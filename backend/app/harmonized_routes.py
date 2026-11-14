@@ -53,6 +53,11 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
             result["analytics"] = store.json("analytics/analytics_metadata.json")
         return result
 
+    @app.get("/api/validation")
+    def validation() -> dict[str, Any]:
+        """Sensor-agreement statistics and overpass-time drift (see data_pipeline/validation.py)."""
+        return store.json("analytics/validation.json")
+
     @app.get("/api/regions")
     def regions(grid: Grid = "5km") -> dict[str, Any]:
         names = sorted(analytics("calendar", grid)["region"].unique())

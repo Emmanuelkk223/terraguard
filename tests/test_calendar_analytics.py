@@ -56,3 +56,32 @@ def test_annual_and_seasonal_summaries() -> None:
     assert not annual["complete_year"].any()  # only January present per year
     seasonal = seasonal_summary(cal).iloc[0]
     assert seasonal["max_year"] == 2020 and seasonal["min_year"] == 2017 and seasonal["n_years"] == 6
+
+
+def _validation_frame(shared_anomaly: bool) -> pd.DataFrame:
+    """MODIS and VIIRS share a seasonal cycle; optionally also a common anomaly in one year."""
+    rows = []
+    for year in range(2015, 2022):
+        for month in range(1, 13):
+            season = 100 + 80 * (month in (12, 1, 2))
+            modis_boost = 3 if (year == 2018 and month in (12, 1, 2)) else 1
+            viirs_boost = modis_boost if shared_anomaly else (3 if (year == 2020 and month in (12, 1, 2)) else 1)
+            rows.append({
+                "region": "Ghana", "month": f"{year}-{month:02d}-01", "coverage_ok": True,
+                "modis_detections": season * modis_boost, "viirs_detections": season * viirs_boost * 5,
+                "modis_cell_days": season * modis_boost // 2, "viirs_cell_days": season * viirs_boost * 2,
+                "both_cell_days": 10, "active_cell_days": season * max(modis_boost, viirs_boost) * 2,
+            })
+    return pd.DataFrame(rows)
+
+
+def test_validation_detects_shared_year_to_year_signal() -> None:
+    from data_pipeline.validation import validate_grid
+
+    shared = validate_grid(_validation_frame(shared_anomaly=True))
+    independent = validate_grid(_validation_frame(shared_anomaly=False))
+    assert shared["months"] == 84
+    assert shared["raw_detections"]["spearman_raw_series"] > 0.7  # the common season dominates the raw series
+    # After removing seasonality, only a genuinely shared anomaly keeps the sensors correlated.
+    assert shared["cell_days"]["spearman_deseasonalised"] > independent["cell_days"]["spearman_deseasonalised"] + 0.2
+    assert set(shared["agreement_share_both_by_year"]) == set(range(2015, 2022))

@@ -77,3 +77,14 @@ def test_covered_ranges_merge_contiguous_windows(tmp_path: Path) -> None:
 
     names = ["MODIS_SP_2024-01-01_2024-01-05.csv", "MODIS_SP_2024-01-06_2024-01-10.csv", "MODIS_SP_2024-01-16_2024-01-20.csv"]
     assert covered_ranges([Path(n) for n in names]) == [["2024-01-01", "2024-01-10"], ["2024-01-16", "2024-01-20"]]
+
+
+def test_overpass_drift_reports_median_daytime_hour(tmp_path: Path) -> None:
+    from data_pipeline.validation import overpass_drift
+
+    frame = pd.DataFrame({
+        "acq_datetime": pd.to_datetime(["2019-01-01 10:00", "2019-01-02 11:00", "2019-01-03 12:00", "2019-01-03 01:00"]),
+        "platform": ["Terra"] * 4, "daynight": ["D", "D", "D", "N"],
+    })
+    frame.to_parquet(tmp_path / "x.parquet", index=False)
+    assert overpass_drift(tmp_path) == {"Terra": {2019: 11.0}}  # night record ignored
