@@ -35,6 +35,7 @@ def test_incomplete_months_are_neither_scored_nor_used_as_baseline() -> None:
     bad = cal[cal["year"] == 2021].iloc[0]
     assert bad["status"] == "incomplete_coverage" and not bad["reliable"]
     assert cal[cal["year"] == 2015].iloc[0]["baseline_n"] == 5  # 2021 not in anyone's baseline
+    assert bad[["abs_diff", "pct_diff", "robust_score"]].isna().all()  # no misleading difference or score
 
 
 def test_too_few_years_gives_insufficient_baseline() -> None:

@@ -87,6 +87,9 @@ def build_calendar(
             )
             abs_diff = value - median if n else np.nan
             pct = abs_diff / median * 100 if n and median > 0 else np.nan
+            if not row["coverage_ok"]:
+                # A partial month is not comparable; never publish a difference or score for it.
+                abs_diff = pct = score = np.nan
             record = {
                 "region": row["region"], "year": int(row["year"]), "month": int(row["month"]),
                 "month_start": row["month_start"].date().isoformat(),

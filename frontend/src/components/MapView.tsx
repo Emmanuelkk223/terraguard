@@ -87,6 +87,13 @@ export default function MapView({ grid, region, selection }: Props) {
           );
         })}
       </MapContainer>
+      {cells && cells.features.length > 0 && (
+        <div className="legend" aria-hidden="true">
+          <span>1 day</span>
+          <div className="ramp" style={{ background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((s) => infernoColor(s)).join(",")})` }} />
+          <span>{maxDays} days with a detection in the month (scale is relative to this month's busiest cell)</span>
+        </div>
+      )}
       {error && <p className="error">{error}</p>}
       {cells?.truncated && <p className="muted">Showing the most active cells only; export the CSV for all.</p>}
       <p className="muted small">Each circle is a {grid} grid cell; colour shows how many days in the month it had at least one detection. Cells are detections, not individual fires.</p>
