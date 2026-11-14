@@ -78,6 +78,51 @@ def parse_acquisition_datetime(
     ).dt.tz_convert(None)
 
 
+PLATFORM_BY_SATELLITE = {
+    "TERRA": "Terra",
+    "AQUA": "Aqua",
+    "N": "Suomi-NPP",  # FIRMS labels VIIRS Suomi-NPP with the code "N"
+    "N20": "NOAA-20",
+    "N21": "NOAA-21",
+}
+# MODIS C6.1 user guide classes: low 0-29, nominal 30-79, high 80-100.
+MODIS_CONFIDENCE_BREAKS = (30, 80)
+VIIRS_CONFIDENCE_CODES = {"l": "low", "n": "nominal", "h": "high"}
+
+
+def add_derived_fields(frame: pd.DataFrame) -> pd.DataFrame:
+    """Add platform, a product-specific confidence class and a fire-type flag.
+
+    Original ``confidence``/``type`` values are preserved. ``confidence_class``
+    is only a within-product category: MODIS numeric confidence and VIIRS
+    l/n/h codes are different quantities and are not calibrated to each other.
+    ``is_presumed_vegetation_fire`` is True for FIRMS type 0, False for other
+    types (static land source, offshore, volcano) and missing if unknown.
+    """
+    result = frame.copy()
+    satellite = result["satellite"].astype("string").str.strip().str.upper()
+    result["platform"] = satellite.map(PLATFORM_BY_SATELLITE).astype("string")
+
+    raw = result["confidence"].astype("string").str.strip().str.lower()
+    numeric = pd.to_numeric(raw, errors="coerce")
+    low, high = MODIS_CONFIDENCE_BREAKS
+    is_modis = result["sensor"].astype("string") == "MODIS"
+    modis_class = pd.Series(pd.NA, index=result.index, dtype="string")
+    modis_class = modis_class.mask(numeric < low, "low")
+    modis_class = modis_class.mask((numeric >= low) & (numeric < high), "nominal")
+    modis_class = modis_class.mask(numeric >= high, "high")
+    viirs_class = raw.map(VIIRS_CONFIDENCE_CODES).astype("string")
+    result["confidence_class"] = modis_class.where(is_modis, viirs_class)
+
+    if "type" in result:
+        type_numeric = pd.to_numeric(result["type"], errors="coerce")
+        flag = (type_numeric == 0).astype("boolean")
+        result["is_presumed_vegetation_fire"] = flag.mask(type_numeric.isna())
+    else:
+        result["is_presumed_vegetation_fire"] = pd.array([pd.NA] * len(result), dtype="boolean")
+    return result
+
+
 def validate_observations(
     frame: pd.DataFrame, *, drop_duplicates: bool = True
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
