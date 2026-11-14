@@ -22,6 +22,9 @@ and VIIRS data, and presents it as an interactive **burning activity calendar**,
 | Read-only API, CSV exports with provenance headers | `backend/app/` |
 | Dashboard: calendar with day/week drill-down and date ranges, map with pinned cell details, sensor views (harmonized / MODIS / VIIRS), custom area drawing, history, sensors, anomalies with cross-sensor corroboration, data-quality panel, downloads | `frontend/` |
 | On-demand analytics for any sensor view, region or bounding box | `data_pipeline/area_analytics.py` |
+| Sensitivity to grid size, platform set and quality filters | `data_pipeline/sensitivity.py` |
+| Rainfall context (NASA POWER) and descriptive burning-rainfall association | `data_pipeline/environment.py` |
+| Printable summary report (HTML / Markdown) and chart PNG export | `data_pipeline/report.py`, `frontend/src/components/ChartFrame.tsx` |
 
 How the harmonization works, and why raw counts are never added, is in [docs/methodology.md](docs/methodology.md).
 
@@ -39,7 +42,7 @@ python -m venv .venv
 $env:FIRMS_MAP_KEY = "<your key>"
 foreach ($s in "MODIS_SP","VIIRS_SNPP_SP","VIIRS_NOAA20_SP","VIIRS_NOAA21_SP") { .venv\Scripts\python -m data_pipeline.bulk_download --sources $s }
 
-# 3. Process, harmonize, analyse (about a minute)
+# 3. Process, harmonize, analyse, validate (about 6 minutes; the last step fetches rainfall from NASA POWER and is skipped with a warning if offline)
 .venv\Scripts\python -m data_pipeline.run_all
 
 # 4. API (port 8000) and frontend (port 5173), in two terminals
@@ -77,4 +80,4 @@ tests/
 ## Credits and licences
 
 Fire data: NASA FIRMS (LANCE / EOSDIS). Boundaries: geoBoundaries gbOpen (CC BY-SA 2.0 for ADM1).
-Basemap: OpenStreetMap contributors. The original planning document is kept in [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md).
+Rainfall context: NASA POWER (https://power.larc.nasa.gov/). Basemap: OpenStreetMap contributors. The original planning document is kept in [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md).

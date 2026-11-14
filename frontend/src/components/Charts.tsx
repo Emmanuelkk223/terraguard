@@ -2,7 +2,7 @@ import {
   Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart, ReferenceArea, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import type { AnnualRow, CalRow, SeasonalRow, SeriesRow } from "../types";
+import type { AnnualRow, CalRow, RainRow, SeasonalRow, SeriesRow } from "../types";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const AXIS = { stroke: "#8fa0b3", fontSize: 12 };
@@ -215,6 +215,36 @@ export function SeriesChart({ data, interval, onPick }: SeriesProps) {
           onClick={(d: unknown) => onPick(((d as { payload?: SeriesRow }).payload ?? d) as SeriesRow)}
         />
       </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+const medianOf = (values: number[]) => {
+  const s = [...values].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length ? (s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2) : 0;
+};
+
+/** Typical rainfall by calendar month (bars) against typical burning activity (line, right axis). */
+export function RainfallClimateChart({ rain, seasonal }: { rain: RainRow[]; seasonal: SeasonalRow[] }) {
+  const burning = new Map(seasonal.map((s) => [s.month, s.median]));
+  const data = MONTHS.map((label, i) => ({
+    month: label,
+    rain: Math.round(medianOf(rain.filter((r) => r.month === i + 1).map((r) => r.rainfall_mm)) * 10) / 10,
+    burning: burning.get(i + 1) ?? 0,
+  }));
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid stroke={GRID} vertical={false} />
+        <XAxis dataKey="month" {...AXIS} />
+        <YAxis yAxisId="rain" {...AXIS} width={56} label={{ value: "mm / month", angle: -90, position: "insideLeft", fill: "#8fa0b3", fontSize: 11 }} />
+        <YAxis yAxisId="fire" orientation="right" {...AXIS} width={56} />
+        <Tooltip contentStyle={TIP} />
+        <Legend />
+        <Bar yAxisId="rain" dataKey="rain" name="Typical rainfall (mm/month)" fill="#4a6785" fillOpacity={0.75} />
+        <Line yAxisId="fire" dataKey="burning" name="Typical active cell-days" stroke="#f6c453" strokeWidth={2.5} dot={{ r: 3 }} />
+      </ComposedChart>
     </ResponsiveContainer>
   );
 }

@@ -1,5 +1,5 @@
 import type {
-  AnnualRow, AreaQuery, CalRow, CellCollection, HarmonizationMeta, MethodComparison, Period, Quality, SeasonalRow, SeriesRow, Validation,
+  AnnualRow, AreaQuery, CalRow, CellCollection, HarmonizationMeta, MethodComparison, Period, Quality, RainAssociation, RainRow, SeasonalRow, SensitivityReport, SeriesRow, Validation,
 } from "../types";
 
 export class ApiError extends Error {
@@ -49,9 +49,16 @@ export const api = {
   boundaries: () => getJSON<GeoJSON.FeatureCollection>("boundaries"),
   harmonization: () => getJSON<HarmonizationMeta>("harmonization"),
   validation: () => getJSON<Validation>("validation"),
+  rainfall: (region: string) => getJSON<{ data: RainRow[] }>("environment/rainfall", { region }).then((r) => r.data),
+  rainfallAssociation: () => getJSON<RainAssociation>("environment/association"),
+  sensitivity: () => getJSON<SensitivityReport>("sensitivity"),
   modelComparison: () => getJSON<MethodComparison>("model-comparison"),
   seasonalAllRegions: (grid: AreaQuery["grid"]) => getJSON<{ data: SeasonalRow[] }>("seasonal/regions", { grid }).then((r) => r.data),
 };
+
+export function reportUrl(format: "html" | "md", q: AreaQuery, extra: Params = {}): string {
+  return `/api/export/report.${format}?${queryString({ ...areaParams(q), ...extra })}`;
+}
 
 export function exportUrl(kind: "calendar" | "cells" | "series", q: AreaQuery, extra: Params = {}): string {
   return `/api/export/${kind}.csv?${queryString({ ...areaParams(q), ...extra })}`;

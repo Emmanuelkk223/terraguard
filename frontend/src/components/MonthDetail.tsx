@@ -1,5 +1,6 @@
 import { BaselineChart } from "./Charts";
-import type { CalRow, Status } from "../types";
+import { describeRain } from "../services/rain";
+import type { CalRow, RainRow, Status } from "../types";
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const fmt = (n: number | null | undefined, digits = 0) =>
@@ -17,7 +18,7 @@ const STATUS_TEXT: Record<Status, { label: string; tone: string }> = {
   below_flat_baseline: { label: "Below a flat baseline (no score)", tone: "muted" },
 };
 
-export default function MonthDetail({ row, rows }: { row: CalRow | null; rows: CalRow[] }) {
+export default function MonthDetail({ row, rows, rain }: { row: CalRow | null; rows: CalRow[]; rain?: RainRow | null }) {
   if (!row) return <aside className="detail muted">Select a month in the calendar to compare it with the same month in other years.</aside>;
   const s = STATUS_TEXT[row.status];
   return (
@@ -40,6 +41,11 @@ export default function MonthDetail({ row, rows }: { row: CalRow | null; rows: C
         <dt>VIIRS cell-days{row.coverage_ok ? "" : " (partial)"}</dt><dd>{fmt(row.viirs_cell_days)}</dd>
         <dt>Seen by both{row.coverage_ok ? "" : " (partial)"}</dt><dd>{fmt(row.both_cell_days)}</dd>
       </dl>
+      {rain && (
+        <p className="rain-note" title="NASA POWER monthly precipitation, sampled at region centre points; coarse gridded context, not a cause">
+          <b>Rainfall context:</b> {describeRain(rain)}.
+        </p>
+      )}
       {row.coverage_ok && (
         <>
           <div className="mini-title">How this month compares with history</div>

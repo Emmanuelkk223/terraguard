@@ -22,6 +22,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import atomic
+
 
 def _deseasonalise(values: pd.Series, month: pd.Series) -> pd.Series:
     median = values.groupby(month).transform("median")
@@ -93,7 +95,7 @@ def run(harmonized_dir: Path, observations_dir: Path, output: Path) -> dict[str,
     if observations_dir.exists():
         report["overpass_hour_by_year"] = overpass_drift(observations_dir)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    atomic.write_text(output, json.dumps(report, indent=2))
     return report
 
 

@@ -44,3 +44,22 @@ One row per region (and `Ghana`) per month.
 `incomplete_coverage`, `insufficient_baseline`, `above_flat_baseline`, `below_flat_baseline`.
 `annual_<grid>.csv` (with `complete_year`), `seasonal_<grid>.csv` (median, mean, min/max and their years across complete years),
 and `anomalies_<grid>.csv` (flagged rows only).
+
+## Rainfall context - `data/processed/environment/`
+`rainfall_monthly.csv` (NASA POWER PRECTOTCORR; raw responses are kept unchanged in `data/raw/environment/`)
+
+| Column | Meaning |
+|---|---|
+| `region` | Ghana (area-weighted mean of the regions) or one of the 16 regions |
+| `year`, `month`, `days` | The calendar month |
+| `rainfall_mm_per_day`, `rainfall_mm` | Monthly mean rate and the month total |
+| `rain_percentile` | Rank of this month among the same calendar month in all years (1.0 = wettest) |
+| `rain_median_mm_per_day` | Typical rate for that calendar month |
+
+`rainfall_association.json`: rank correlations of burning and rainfall anomalies per area at lags 0-3 and for the previous three months,
+each with its number of paired months, plus the sample points, source, retrieval date and caveats.
+
+## Other analytics outputs - `data/processed/analytics/`
+- `model_comparison.json`: baseline versus Isolation Forest (held-out flags, agreement, synthetic sensitivity with AUC).
+- `sensitivity.json`: national summary of each sensitivity scenario (series correlation, sensor agreement, season, flagged months).
+- `validation.json`: sensor agreement statistics and overpass-time drift.

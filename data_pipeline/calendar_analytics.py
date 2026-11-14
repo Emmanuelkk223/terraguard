@@ -22,6 +22,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import atomic
 from .calibration import MAD_SCALE, TARGET_FALSE_FLAG_RATE, threshold_for
 
 DEFAULT_THRESHOLD = None  # None = calibrated to the baseline size; a number forces a fixed threshold
@@ -154,11 +155,11 @@ def run(monthly_csv: Path, output_dir: Path, *, min_samples: int = 5,
     label = monthly_csv.stem.removeprefix("monthly_")
     cal = build_calendar(pd.read_csv(monthly_csv), min_samples=min_samples, threshold=threshold)
     output_dir.mkdir(parents=True, exist_ok=True)
-    cal.to_csv(output_dir / f"calendar_{label}.csv", index=False)
-    annual_summary(cal).to_csv(output_dir / f"annual_{label}.csv", index=False)
-    seasonal_summary(cal).to_csv(output_dir / f"seasonal_{label}.csv", index=False)
+    atomic.to_csv(cal, output_dir / f"calendar_{label}.csv", index=False)
+    atomic.to_csv(annual_summary(cal), output_dir / f"annual_{label}.csv", index=False)
+    atomic.to_csv(seasonal_summary(cal), output_dir / f"seasonal_{label}.csv", index=False)
     flagged = cal[cal["status"].isin(["unusually_high", "unusually_low"])]
-    flagged.to_csv(output_dir / f"anomalies_{label}.csv", index=False)
+    atomic.to_csv(flagged, output_dir / f"anomalies_{label}.csv", index=False)
     return {
         "grid": label, "rows": int(len(cal)), "flagged": int(len(flagged)),
         "status_counts": {str(k): int(v) for k, v in cal["status"].value_counts().items()},
@@ -179,7 +180,7 @@ def main() -> None:
     if not files:
         raise SystemExit(f"No monthly_*km.csv in {args.harmonized_dir}")
     summary = [run(f, args.output_dir, min_samples=args.min_samples, threshold=args.threshold) for f in files]
-    (args.output_dir / "analytics_metadata.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    atomic.write_text(args.output_dir / "analytics_metadata.json", json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
 
 

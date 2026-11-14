@@ -10,11 +10,14 @@ import argparse
 import json
 from pathlib import Path
 
+from . import atomic
 from .calendar_analytics import run as run_analytics
 from .harmonize import STABLE_PLATFORMS, harmonize
 from .process import process
 from .regions import DEFAULT_ADM1, GhanaRegions
 from .model_comparison import compare as compare_models
+from .environment import run as run_environment
+from .sensitivity import run as run_sensitivity
 from .validation import run as run_validation
 
 
@@ -27,11 +30,11 @@ def main() -> None:
     parser.add_argument("--all-platforms", action="store_true", help="Include NOAA-20/21 (constellation changes over time)")
     args = parser.parse_args()
 
-    print("1/5 processing raw files ...", flush=True)
+    print("1/7 processing raw files ...", flush=True)
     meta = process(args.raw_dir, args.output_dir)
     covered = {name: info["covered_ranges"] for name, info in meta["products"].items()}
 
-    print("2/5 harmonizing ...", flush=True)
+    print("2/7 harmonizing ...", flush=True)
     harmonized = harmonize(
         sorted((args.output_dir / "observations").glob("*.parquet")),
         args.output_dir / "harmonized",
@@ -41,23 +44,32 @@ def main() -> None:
         covered_ranges=covered,
     )
 
-    print("3/5 calendar analytics ...", flush=True)
+    print("3/7 calendar analytics ...", flush=True)
     summaries = [
         run_analytics(path, args.output_dir / "analytics")
         for path in sorted((args.output_dir / "harmonized").glob("monthly_*km.csv"))
     ]
-    (args.output_dir / "analytics" / "analytics_metadata.json").write_text(
-        json.dumps(summaries, indent=2), encoding="utf-8"
-    )
-    print("4/5 validation ...", flush=True)
+    atomic.write_text(args.output_dir / "analytics" / "analytics_metadata.json", json.dumps(summaries, indent=2))
+    print("4/7 validation ...", flush=True)
     run_validation(args.output_dir / "harmonized", args.output_dir / "observations",
                    args.output_dir / "analytics" / "validation.json")
 
-    print("5/5 baseline vs Isolation Forest comparison ...", flush=True)
+    print("5/7 baseline vs Isolation Forest comparison ...", flush=True)
     import pandas as pd
 
     comparison = compare_models(pd.read_csv(args.output_dir / "analytics" / "calendar_5km.csv"))
-    (args.output_dir / "analytics" / "model_comparison.json").write_text(json.dumps(comparison, indent=2), encoding="utf-8")
+    atomic.write_text(args.output_dir / "analytics" / "model_comparison.json", json.dumps(comparison, indent=2))
+
+    print("6/7 sensitivity analysis ...", flush=True)
+    sensitivity = run_sensitivity(args.output_dir / "observations", args.output_dir / "harmonized", covered, args.boundary)
+    atomic.write_text(args.output_dir / "analytics" / "sensitivity.json", json.dumps(sensitivity, indent=2))
+
+    print("7/7 rainfall context (NASA POWER; needs network) ...", flush=True)
+    try:
+        run_environment(args.boundary, Path("data/raw/environment"), args.output_dir / "environment",
+                        args.output_dir / "analytics" / "calendar_5km.csv")
+    except Exception as exc:  # the rest of the pipeline is complete and valid without rainfall context
+        print(f"  skipped rainfall context: {exc}", flush=True)
 
     print(json.dumps({"observations_used": harmonized["observations_used"], "analytics": summaries}, indent=2))
 

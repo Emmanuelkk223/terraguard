@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { AnnualChart, SeasonalChart, YearCompareChart } from "../components/Charts";
+import { AnnualChart, RainfallClimateChart, SeasonalChart, YearCompareChart } from "../components/Charts";
+import ChartFrame from "../components/ChartFrame";
 import { api } from "../services/api";
 import { burningSeason, MONTH_ABBR } from "../services/season";
-import type { AnnualRow, CalRow, Grid, SeasonalRow } from "../types";
+import type { AnnualRow, CalRow, Grid, RainAssociation, RainRow, SeasonalRow } from "../types";
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const fmt = (n: number) => Math.round(n).toLocaleString("en-GB");
@@ -14,6 +15,7 @@ interface Props {
   rows: CalRow[];
   grid: Grid;
   region: string;
+  area: string;
 }
 
 function median(values: number[]): number {
@@ -22,11 +24,22 @@ function median(values: number[]): number {
   return s.length ? (s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2) : NaN;
 }
 
-export default function HistoricalPage({ annual, seasonal, rows, grid, region }: Props) {
+export default function HistoricalPage({ annual, seasonal, rows, grid, region, area }: Props) {
   const [fraction, setFraction] = useState(0.25);
   const [allRegions, setAllRegions] = useState<SeasonalRow[]>([]);
   const complete = useMemo(() => annual.filter((a) => a.complete_year), [annual]);
   const [years, setYears] = useState<number[]>([]);
+  const [rain, setRain] = useState<RainRow[]>([]);
+  const [assoc, setAssoc] = useState<RainAssociation | null>(null);
+  const areaKey = area === "Custom area" ? null : area;
+
+  useEffect(() => {
+    api.rainfallAssociation().then(setAssoc).catch(() => setAssoc(null));
+  }, []);
+  useEffect(() => {
+    if (!areaKey) return setRain([]);
+    api.rainfall(areaKey).then(setRain).catch(() => setRain([]));
+  }, [areaKey]);
 
   useEffect(() => {
     api.seasonalAllRegions(grid).then(setAllRegions).catch(() => setAllRegions([]));
@@ -65,7 +78,11 @@ export default function HistoricalPage({ annual, seasonal, rows, grid, region }:
           <input type="range" min={5} max={75} step={5} value={Math.round(fraction * 100)} onChange={(e) => setFraction(Number(e.target.value) / 100)} />
         </label>
       </div>
-      {seasonal.length ? <SeasonalChart data={seasonal} season={season?.months ?? []} /> : <p className="muted">No seasonal data.</p>}
+      {seasonal.length ? (
+        <ChartFrame title={`${region} · seasonal pattern of active cell-days`} filename="terraguard_seasonal.png">
+          <SeasonalChart data={seasonal} season={season?.months ?? []} />
+        </ChartFrame>
+      ) : <p className="muted">No seasonal data.</p>}
       {season && (
         <p>
           Burning season: <b>{season.label}</b>, peaking in <b>{MONTH_NAMES[season.peak - 1]}</b>. These {season.months.length} months hold{" "}
@@ -102,7 +119,11 @@ export default function HistoricalPage({ annual, seasonal, rows, grid, region }:
           <button key={y} type="button" className={`chip-btn ${years.includes(y) ? "on" : ""}`} aria-pressed={years.includes(y)} onClick={() => toggleYear(y)}>{y}</button>
         ))}
       </div>
-      {years.length > 0 && seasonal.length > 0 ? <YearCompareChart rows={rows} years={years} seasonal={seasonal} /> : <p className="muted">Select at least one year.</p>}
+      {years.length > 0 && seasonal.length > 0 ? (
+        <ChartFrame title={`${region} · years compared: ${years.join(", ")}`} filename={`terraguard_years_${years.join("-")}.png`}>
+          <YearCompareChart rows={rows} years={years} seasonal={seasonal} />
+        </ChartFrame>
+      ) : <p className="muted">Select at least one year.</p>}
       {years.length > 0 && (
         <table className="table narrow">
           <thead><tr><th>Year</th><th>Annual active cell-days</th><th>Versus a typical complete year</th></tr></thead>
@@ -122,9 +143,45 @@ export default function HistoricalPage({ annual, seasonal, rows, grid, region }:
         </table>
       )}
 
+      <h3>Rainfall context</h3>
+      <p className="muted">
+        Typical rainfall by calendar month (NASA POWER, a coarse gridded product sampled at the region's centre) beside typical burning
+        activity. This is context for interpretation: association is not causation, and rainfall varies a lot within a region.
+      </p>
+      {rain.length > 0 && seasonal.length > 0 ? (
+        <ChartFrame title={`${region} · typical rainfall and burning by month`} filename="terraguard_rainfall_context.png">
+          <RainfallClimateChart rain={rain} seasonal={seasonal} />
+        </ChartFrame>
+      ) : <p className="muted">Rainfall context is available for Ghana and its named regions, not for a custom area.</p>}
+      {areaKey && assoc?.association[areaKey] && (
+        <>
+          <table className="table narrow">
+            <thead><tr><th>Rainfall compared with burning (after removing the seasons)</th><th>Rank correlation</th><th>Months</th></tr></thead>
+            <tbody>
+              {Object.entries(assoc.association[areaKey]).map(([key, v]) => (
+                <tr key={key}>
+                  <th>{key === "lag0" ? "Same month" : key === "previous_three_months" ? "Previous three months combined" : `${key.slice(3)} month${key === "lag1" ? "" : "s"} earlier`}</th>
+                  <td>{v.spearman === null ? "–" : `${v.spearman > 0 ? "+" : ""}${v.spearman.toFixed(2)}`}</td>
+                  <td>{v.n}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="muted small">
+            Negative means wetter-than-usual months tend to have less burning than usual. Values near zero mean no consistent relationship.
+            Several lags are shown, so a few moderate values can arise by chance. Source: {assoc.source}; retrieved {assoc.retrieved}. Recent months
+            can be revised.
+          </p>
+        </>
+      )}
+
       <h3>Annual totals</h3>
       <p className="muted">Muted bars are partial years — some months lack sufficient satellite record coverage — and must not be compared with complete years.</p>
-      {annual.length ? <AnnualChart data={annual} /> : <p className="muted">No annual data.</p>}
+      {annual.length ? (
+        <ChartFrame title={`${region} · annual active cell-days`} filename="terraguard_annual.png">
+          <AnnualChart data={annual} />
+        </ChartFrame>
+      ) : <p className="muted">No annual data.</p>}
     </section>
   );
 }

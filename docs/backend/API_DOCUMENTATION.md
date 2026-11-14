@@ -122,3 +122,14 @@ A single-sensor view uses that sensor's own archive coverage (for example Januar
 
 Invalid `bbox`, unknown region or sensor, reversed dates, or a daily range that is too long return 422. A valid area with no
 detections returns zero-valued rows, not an error.
+
+## Reports, sensitivity, model comparison and rainfall
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/export/report.html`, `/api/export/report.md` | Summary report for an area, sensor view and optional `start`/`end` period (HTML is self-contained and printable) |
+| `GET /api/sensitivity` | National results under each sensitivity scenario |
+| `GET /api/model-comparison` | Baseline versus Isolation Forest comparison |
+| `GET /api/environment/rainfall?region=` | Monthly rainfall with percentile for Ghana or a named region (422 otherwise) |
+| `GET /api/environment/association` | Descriptive burning-rainfall rank correlations (association, not causation) |
+| `GET /api/seasonal/regions` | Seasonal statistics for every region at once |

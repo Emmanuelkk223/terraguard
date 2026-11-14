@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "./services/api";
 import type {
   AnnualRow, AreaQuery, CalRow, Grid, HarmonizationMeta, SeasonalRow, Selection, Sensor, Validation,
@@ -45,6 +45,8 @@ export default function App() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [attempt, setAttempt] = useState(0); // bumped to reload the data
+  const retries = useRef(0);
 
   const q: AreaQuery = useMemo(() => ({ grid, region, bbox, sensor }), [grid, region, bbox, sensor]);
   const areaName = bbox ? "Custom area" : region;
@@ -61,6 +63,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let timer: number | undefined;
     setLoading(true);
     setError(null);
     Promise.all([
@@ -70,6 +73,7 @@ export default function App() {
     ])
       .then(([c, a, s, an, both]) => {
         if (cancelled) return;
+        retries.current = 0;
         setRows(c);
         setAnnual(a);
         setSeasonal(s);
@@ -79,15 +83,24 @@ export default function App() {
       .catch((e: unknown) => {
         if (cancelled) return;
         setRows([]);
+        const updating = e instanceof ApiError && e.status === 503 && /updating/i.test(e.message);
+        if (updating && retries.current < 4) {
+          // The pipeline is rewriting a data file right now: wait a moment and try again.
+          retries.current += 1;
+          setError(null);
+          timer = window.setTimeout(() => setAttempt((n) => n + 1), 3000);
+          return;
+        }
         setError(e instanceof ApiError && e.status === 503
-          ? "No processed data is available yet. Run the data pipeline (see README), then reload."
+          ? (updating ? "The data is being updated and could not be read yet." : "No processed data is available yet. Run the data pipeline (see README), then reload.")
           : `Could not load data: ${(e as Error).message}`);
       })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [q, sensor]);
+  }, [q, sensor, attempt]);
 
   const openFromAnomaly = (s: Selection) => {
     setSelection(s);
@@ -143,12 +156,17 @@ export default function App() {
       </nav>
       <main>
         {loading && (rows.length ? <span className="updating" role="status">Updating…</span> : <p className="muted">Loading…</p>)}
-        {error && <p className="error" role="alert">{error}</p>}
+        {error && (
+          <p className="error" role="alert">
+            {error}{" "}
+            <button type="button" className="tool" onClick={() => { retries.current = 0; setAttempt((n) => n + 1); }}>Retry</button>
+          </p>
+        )}
         {ready && tab === "overview" && <Overview rows={rows} annual={annual} region={heading} onOpenCalendar={() => setTab("calendar")} />}
         {ready && tab === "calendar" && (
           <CalendarPage rows={rows} q={q} heading={heading} selection={selection} onSelect={setSelection} onBbox={setBbox} />
         )}
-        {ready && tab === "historical" && <HistoricalPage annual={annual} seasonal={seasonal} rows={rows} grid={grid} region={heading} />}
+        {ready && tab === "historical" && <HistoricalPage annual={annual} seasonal={seasonal} rows={rows} grid={grid} region={heading} area={areaName} />}
         {ready && tab === "sensors" && <SensorsPage rows={rowsBoth} meta={meta} validation={validation} grid={grid} region={areaName} />}
         {ready && tab === "anomalies" && <AnomaliesPage rows={anomalies} region={heading} area={bbox ? "Custom area" : region} onOpen={openFromAnomaly} />}
         {ready && tab === "data" && <DataPage q={q} meta={meta} />}

@@ -33,6 +33,7 @@ import pandas as pd
 from scipy.stats import rankdata
 from sklearn.ensemble import IsolationForest
 
+from . import atomic
 from .calibration import MAD_SCALE, threshold_for
 
 TRAIN_END_YEAR = 2019
@@ -277,7 +278,7 @@ def main() -> None:
     args = parser.parse_args()
     report = compare(pd.read_csv(args.calendar), train_end=args.train_end)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    atomic.write_text(args.output, json.dumps(report, indent=2))
     print(json.dumps(report["pooled"], indent=2))
 
 

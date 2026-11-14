@@ -1,4 +1,6 @@
 import { AgreementChart, RatioChart, SensorCellDaysChart } from "../components/Charts";
+import ChartFrame from "../components/ChartFrame";
+import SensitivityPanel from "../components/SensitivityPanel";
 import type { CalRow, Grid, HarmonizationMeta, Validation } from "../types";
 
 interface Props { rows: CalRow[]; meta: HarmonizationMeta | null; validation: Validation | null; grid: Grid; region: string }
@@ -33,11 +35,11 @@ export default function SensorsPage({ rows, meta, validation, grid, region }: Pr
         Aggregating to a common grid only slightly reduces VIIRS's excess, and the ratio swings strongly with activity level
         (VIIRS finds relatively more when fires are few and small), so there is no single conversion factor between the sensors.
       </p>
-      <RatioChart rows={rows} />
+      <ChartFrame title={`${region} · VIIRS ÷ MODIS ratio`} filename="terraguard_sensor_ratio.png"><RatioChart rows={rows} /></ChartFrame>
       <h3>Cell-days by sensor</h3>
-      <SensorCellDaysChart rows={rows} />
+      <ChartFrame title={`${region} · cell-days by sensor`} filename="terraguard_sensor_cell_days.png"><SensorCellDaysChart rows={rows} /></ChartFrame>
       <h3>Agreement between sensors</h3>
-      <AgreementChart rows={rows} />
+      <ChartFrame title={`${region} · agreement between sensors`} filename="terraguard_sensor_agreement.png"><AgreementChart rows={rows} /></ChartFrame>
       {v && (
         <>
           <h3>Do the sensors agree beyond the seasons? (all of Ghana, {grid})</h3>
@@ -78,6 +80,7 @@ export default function SensorsPage({ rows, meta, validation, grid, region }: Pr
           </p>
         </>
       )}
+      <SensitivityPanel />
       {h && (
         <div className="callout">
           <b>Method {h.harmonization_version}</b> — {h.harmonization_method}. Platforms:{" "}

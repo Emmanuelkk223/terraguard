@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import atomic
 from .regions import COUNTRY_NAME, DEFAULT_ADM1, GhanaRegions
 
 HARMONIZATION_VERSION = "A-0.1"
@@ -299,8 +300,8 @@ def harmonize(
             archive = archive_coverage(months, covered_ranges, platforms)
         monthly = monthly_summary(cell_days, min_coverage=min_coverage, archive=archive)
         label = f"{size:g}km"
-        cell_days.to_parquet(output_dir / f"cell_days_{label}.parquet", index=False)
-        monthly.to_csv(output_dir / f"monthly_{label}.csv", index=False)
+        atomic.to_parquet(cell_days, output_dir / f"cell_days_{label}.parquet", index=False)
+        atomic.to_csv(monthly, output_dir / f"monthly_{label}.csv", index=False)
         grids[label] = {
             "cell_days": int(len(cell_days)),
             "overall_agreement_jaccard": float((cell_days["occupied_by"] == "both").mean()) if len(cell_days) else None,
@@ -322,7 +323,7 @@ def harmonize(
             "Sensors are not calibrated to each other; FRP and confidence are not harmonized.",
         ],
     }
-    (output_dir / "harmonization_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    atomic.write_text(output_dir / "harmonization_metadata.json", json.dumps(metadata, indent=2))
     return metadata
 
 

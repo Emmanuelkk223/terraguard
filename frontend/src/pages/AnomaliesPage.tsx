@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import MethodComparisonPanel from "../components/MethodComparisonPanel";
-import type { CalRow, Selection, Status } from "../types";
+import { api } from "../services/api";
+import type { CalRow, RainRow, Selection, Status } from "../types";
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -20,6 +21,12 @@ function Corroboration({ row }: { row: CalRow }) {
 
 export default function AnomaliesPage({ rows, region, area, onOpen }: { rows: CalRow[]; region: string; area: string; onOpen: (s: Selection) => void }) {
   const [dir, setDir] = useState<"all" | "high" | "low">("all");
+  const [rain, setRain] = useState<RainRow[]>([]);
+  useEffect(() => {
+    if (area === "Custom area") return setRain([]);
+    api.rainfall(area).then(setRain).catch(() => setRain([]));
+  }, [area]);
+  const rainFor = (r: CalRow) => rain.find((x) => x.year === r.year && x.month === r.month);
   const list = useMemo(
     () =>
       rows
@@ -41,7 +48,7 @@ export default function AnomaliesPage({ rows, region, area, onOpen }: { rows: Ca
       </div>
       {!list.length ? <p className="muted">No months flagged for this selection.</p> : (
         <table className="table">
-          <thead><tr><th>Month</th><th>Active cell-days</th><th>Median</th><th>Δ%</th><th>Score</th><th>Also unusual in</th><th>Why flagged</th></tr></thead>
+          <thead><tr><th>Month</th><th>Active cell-days</th><th>Median</th><th>Δ%</th><th>Score</th><th>Also unusual in</th><th>Rainfall that month</th><th>Why flagged</th></tr></thead>
           <tbody>
             {list.slice(0, 100).map((r) => (
               <tr key={`${r.region}-${r.year}-${r.month}`}>
@@ -51,6 +58,7 @@ export default function AnomaliesPage({ rows, region, area, onOpen }: { rows: Ca
                 <td>{r.pct_diff === null ? "–" : `${r.pct_diff > 0 ? "+" : ""}${Math.round(r.pct_diff)}%`}</td>
                 <td className={r.status === "unusually_high" ? "hi" : "lo"}>{r.robust_score === null ? "–" : r.robust_score.toFixed(1)}</td>
                 <td><Corroboration row={r} /></td>
+                <td>{rainFor(r) ? <span title="Context only: coarse NASA POWER rainfall, not a cause">{`${Math.round(rainFor(r)!.rain_percentile * 100)}th percentile`}</span> : "–"}</td>
                 <td className="why">{r.explanation}</td>
               </tr>
             ))}

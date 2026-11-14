@@ -20,6 +20,7 @@ from data_pipeline.area_analytics import (
 )
 from data_pipeline.calendar_analytics import annual_summary, seasonal_summary
 from data_pipeline.harmonize import cell_centres
+from data_pipeline.report import build_blocks, to_html, to_markdown
 
 Grid = Literal["1km", "2km", "5km"]
 Sensor = Literal["harmonized", "modis", "viirs"]
@@ -123,9 +124,7 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
         """Sensor-agreement statistics and overpass-time drift (see data_pipeline/validation.py)."""
         return store.json("analytics/validation.json")
 
-    @app.get("/api/quality")
-    def quality(grid: Grid = "5km") -> dict[str, Any]:
-        """Data-quality summary: records, exclusions, missing values, coverage and sensor mix."""
+    def quality_summary(grid: str) -> dict[str, Any]:
         processing = store.json("metadata.json")
         harmonized = store.json(METADATA)
         national = national_monthly(grid)
@@ -158,10 +157,33 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
             },
         }
 
+    @app.get("/api/quality")
+    def quality(grid: Grid = "5km") -> dict[str, Any]:
+        """Data-quality summary: records, exclusions, missing values, coverage and sensor mix."""
+        return quality_summary(grid)
+
     @app.get("/api/model-comparison")
     def model_comparison() -> dict[str, Any]:
         """Baseline vs Isolation Forest comparison (see data_pipeline/model_comparison.py)."""
         return store.json("analytics/model_comparison.json")
+
+    @app.get("/api/sensitivity")
+    def sensitivity() -> dict[str, Any]:
+        """Sensitivity of national results to grid size, platform set and quality filters."""
+        return store.json("analytics/sensitivity.json")
+
+    @app.get("/api/environment/rainfall")
+    def environment_rainfall(region: str = "Ghana") -> dict[str, Any]:
+        """Monthly rainfall (NASA POWER, coarse gridded) and its percentile among the same calendar month in other years."""
+        table = store.csv("environment/rainfall_monthly.csv")
+        if region not in set(table["region"].unique()):
+            raise HTTPException(422, f"No rainfall context for '{region}' (available for Ghana and its named regions)")
+        return {"region": region, "unit": "mm/day and mm/month", "data": jsonable(table[table["region"] == region])}
+
+    @app.get("/api/environment/association")
+    def environment_association() -> dict[str, Any]:
+        """Descriptive rank correlations between burning and rainfall anomalies. Association, not causation."""
+        return store.json("environment/rainfall_association.json")
 
     @app.get("/api/regions")
     def regions(grid: Grid = "5km") -> dict[str, Any]:
@@ -238,7 +260,10 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
         path = f"harmonized/cell_days_{grid}.parquet"
         if not store.exists(path):
             raise HTTPException(503, f"Analytical dataset '{path}' is not available")
-        frame = pd.read_parquet(store.base / path, filters=[("date", ">=", first), ("date", "<=", last)])
+        try:
+            frame = pd.read_parquet(store.base / path, filters=[("date", ">=", first), ("date", "<=", last)])
+        except Exception as exc:  # being rewritten or corrupt: a retryable condition, not a server crash
+            raise HTTPException(503, f"Analytical dataset '{path}' could not be read; it may be updating. Retry in a moment.") from exc
         bbox = parsed_bbox(bbox_text)
         if bbox is None:
             check_region(grid, region)
@@ -338,6 +363,41 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
         return csv_response(cells, f"terraguard_cells_{label}_{sensor}_{grid}.csv",
                             {"area": describe_area(region, bbox), "sensor view": sensor, "grid": grid,
                              "period": f"{first.date()} to {last.date()}"})
+
+    def report_blocks(grid: str, region: str, sensor: str, bbox: str | None, start: date | None, end: date | None) -> list:
+        frame = calendar_frame(grid, region, sensor, bbox).copy()
+        flagged = frame["status"].isin(["unusually_high", "unusually_low"])
+        for view in ("modis", "viirs"):
+            other = calendar_frame(grid, region, view, bbox).set_index(["year", "month"])["status"]
+            frame[f"{view}_status"] = [other.get((y, m)) if f else None for y, m, f in zip(frame["year"], frame["month"], flagged)]
+        period = series = None
+        if start is not None or end is not None:
+            first, last = period_range(start, end)
+            period = (first.date().isoformat(), last.date().isoformat())
+            series = series_frame(grid, region, sensor, bbox, first, last, "day" if (last - first).days < 1100 else "week")
+        meta = store.json(METADATA) if store.exists(METADATA) else None
+        quality = quality_summary(grid) if store.exists("metadata.json") else None
+        return build_blocks(frame, area=area_label(region, bbox) + (f" ({bbox})" if bbox else ""), sensor=sensor, grid=grid,
+                            meta=meta, period=period, period_series=series, quality=quality)
+
+    def period_range(start: date | None, end: date | None) -> tuple[pd.Timestamp, pd.Timestamp]:
+        if start is None or end is None:
+            raise HTTPException(422, "Provide both start and end dates for a period")
+        return period(start, end, None, None)
+
+    @app.get("/api/export/report.md")
+    def export_report_md(grid: Grid = "5km", region: str = "Ghana", sensor: Sensor = "harmonized", bbox: str | None = None,
+                         start: date | None = None, end: date | None = None) -> Response:
+        text = to_markdown(report_blocks(grid, region, sensor, bbox, start, end))
+        safe = area_label(region, bbox).replace(" ", "_")
+        return Response(text, media_type="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="terraguard_report_{safe}_{sensor}_{grid}.md"'})
+
+    @app.get("/api/export/report.html")
+    def export_report_html(grid: Grid = "5km", region: str = "Ghana", sensor: Sensor = "harmonized", bbox: str | None = None,
+                           start: date | None = None, end: date | None = None) -> Response:
+        """Self-contained printable report; open it and use Print > Save as PDF."""
+        return Response(to_html(report_blocks(grid, region, sensor, bbox, start, end)), media_type="text/html")
 
     @app.get("/api/export/series.csv")
     def export_series(start: date, end: date, interval: Literal["day", "week"] = "day", grid: Grid = "5km",

@@ -40,6 +40,14 @@ TerraGuard is a prototype for exploring satellite-detected burning activity. Rea
   (`model_comparison.py`) on agreement, stability and a synthetic sensitivity test only; it shows no clear advantage and is not used
   to produce the dashboard's flags. The older sensor-level experiment in `ml/` is likewise not used.
 
+**Rainfall context and sensitivity**
+- Rainfall is a coarse gridded product (~0.5 x 0.625 degrees) sampled at one point per region; it is context, not a regional measurement,
+  and the most recent months can be revised. It is available for Ghana and its named regions only, not for custom areas.
+- Correlations between burning and rainfall are descriptive and not evidence of cause. Several lags are shown, so some moderate
+  values can arise by chance.
+- The sensitivity analysis varies grid size, platform set and quality filters; it does not vary the monthly interval, and there is no
+  ground truth by which any scenario could be called correct.
+
 **Not provided**
 - No fire prediction, early warning, burned-area mapping or statements about specific fires, communities or damage.
 - The unauthenticated API and OpenStreetMap tile usage are suitable for development and demonstration only.

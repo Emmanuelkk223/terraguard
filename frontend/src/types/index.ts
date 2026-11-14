@@ -167,6 +167,42 @@ export interface Validation {
   overpass_hour_by_year?: Record<string, Record<string, number>>;
 }
 
+export interface SensitivityScenario {
+  group: string;
+  label: string;
+  complete_months: number;
+  total_active_cell_days: number;
+  share_seen_by_both_sensors: number | null;
+  viirs_to_modis_cell_day_ratio: number | null;
+  burning_season: { months: number[]; label: string; peak_month: number; share_of_year: number } | null;
+  flagged_months: string[];
+  correlation_with_default: number | null;
+  correlation_with_default_deseasonalised: number | null;
+}
+
+export interface SensitivityReport {
+  scenarios: Record<string, SensitivityScenario>;
+  default_flagged_months: string[];
+  notes: string[];
+}
+
+export interface RainRow {
+  region: string;
+  year: number;
+  month: number;
+  rainfall_mm_per_day: number;
+  rainfall_mm: number;
+  rain_percentile: number;
+  rain_median_mm_per_day: number;
+}
+
+export interface RainAssociation {
+  source: string;
+  retrieved: string;
+  association: Record<string, Record<string, { spearman: number | null; n: number }>>;
+  notes: string[];
+}
+
 export type Method = "stat" | "if_raw" | "if_deseason";
 export type Factor = "x3" | "x2" | "div3";
 

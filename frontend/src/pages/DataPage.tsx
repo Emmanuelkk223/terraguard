@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, exportUrl } from "../services/api";
+import { api, exportUrl, reportUrl } from "../services/api";
 import type { AreaQuery, HarmonizationMeta, Quality } from "../types";
 
 const fmt = (n: number | null | undefined) => (n === null || n === undefined ? "–" : n.toLocaleString("en-GB"));
@@ -24,11 +24,13 @@ export default function DataPage({ q, meta }: { q: AreaQuery; meta: Harmonizatio
       <p className="lead">Every file starts with comment lines (#) stating the source, method version, area, sensor view and grid, so it stays interpretable on its own.</p>
       <div className="actions">
         <a className="button" href={exportUrl("calendar", q)}>Monthly calendar · {area} · {q.sensor}</a>
+        <a className="button" href={reportUrl("html", q)} target="_blank" rel="noreferrer">Summary report · {area} (printable)</a>
+        <a className="button" href={reportUrl("md", q)}>Summary report · {area} (Markdown)</a>
         {(q.bbox || q.region !== "Ghana" || q.sensor !== "harmonized") && (
           <a className="button" href={exportUrl("calendar", { ...q, bbox: null, region: "Ghana", sensor: "harmonized" })}>Monthly calendar · all of Ghana</a>
         )}
       </div>
-      <p className="muted small">Cell and daily/weekly series exports for a chosen period are on the calendar page.</p>
+      <p className="muted small">Cell and daily/weekly series exports, and a report for a chosen period, are on the calendar page. Every chart has a PNG button. Open the printable report and use Print, then Save as PDF.</p>
 
       <h3>Data quality</h3>
       {error && <p className="error">{error}</p>}

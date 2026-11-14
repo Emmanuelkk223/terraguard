@@ -50,7 +50,12 @@ class DataStore:
         cached = self._cache.get(relative)
         if cached and cached[0] == mtime:
             return cached[1]
-        value = reader(path)
+        try:
+            value = reader(path)
+        except Exception as exc:  # a file being rewritten, truncated or corrupt: report it, never cache it
+            raise HTTPException(
+                503, f"Analytical dataset '{relative}' could not be read; it may be updating. Retry in a moment."
+            ) from exc
         self._cache[relative] = (mtime, value)
         return value
 

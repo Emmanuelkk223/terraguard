@@ -9,6 +9,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from . import atomic
+
 DEFAULT_SOURCE = "VIIRS_SNPP_NRT"
 DEFAULT_AREA = "-3.26,4.74,1.20,11.17"
 AREA_URL = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{map_key}/{source}/{area}/{days}"
@@ -47,7 +49,7 @@ def download_recent_area(
         raise RuntimeError(f"FIRMS returned no CSV data for recent {source} area request")
     retrieved = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     output_path = output_dir / f"{source}_recent_{days}d_{retrieved}.csv"
-    output_path.write_bytes(body)
+    atomic.write_bytes(output_path, body)
     return [output_path]
 
 
@@ -100,7 +102,7 @@ def download_historical_area(
                 f"FIRMS returned no CSV data for {source} {current} to {window_end}"
             )
         output_path = output_dir / f"{stem}.csv"
-        output_path.write_bytes(body)
+        atomic.write_bytes(output_path, body)
         paths.append(output_path)
         current = window_end + timedelta(days=1)
     return paths

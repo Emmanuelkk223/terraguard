@@ -265,3 +265,13 @@ input[type="range"] { width: min(420px, 100%); accent-color: var(--amber); }
 .chip-btn.on { background: var(--amber); color: #190d03; border-color: var(--amber); }
 .mini-title { font-size: .68rem; text-transform: uppercase; letter-spacing: .12em; color: var(--amber); font-weight: 700; margin: 14px 0 4px; border-top: 1px solid var(--line); padding-top: 12px; }
 .method-panel { margin-top: 8px; }
+
+.group-tag { display: inline-block; margin-right: 8px; padding: 1px 7px; font-size: .62rem; text-transform: uppercase; letter-spacing: .1em; background: var(--panel-2); color: var(--amber); border: 1px solid var(--line-strong); font-weight: 700; }
+.row-default th, .row-default td { background: rgba(79, 157, 105, .08); }
+.callout p { margin: 0 0 8px; } .callout p:last-child { margin-bottom: 0; }
+
+.chart-frame { position: relative; }
+.chart-frame .png { position: absolute; top: -2px; right: 0; z-index: 5; padding: 3px 9px; font-size: .66rem; opacity: .75; }
+.chart-frame .png:hover { opacity: 1; }
+
+.rain-note { margin: 10px 0 0; padding: 8px 10px; background: rgba(76, 192, 179, .08); border-left: 3px solid var(--teal); font-size: .82rem; color: #c3cfdb; }

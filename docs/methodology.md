@@ -88,6 +88,49 @@ Isolation Forest brings no clear ranking advantage (within 0.03 AUC of the basel
 held-out months against 2.4% for the baseline, and cannot say why it flagged a month. The explainable baseline therefore remains the
 primary method. The two methods agree on December 2025 and otherwise overlap little (Jaccard 0.09 nationally).
 
+### Sensitivity to analysis choices
+
+`python -m data_pipeline.sensitivity` (part of `run_all`) re-runs the harmonization with one choice changed at a time and compares the
+national results with the default (5 km grid, Terra + Aqua + Suomi-NPP, no quality filter). Rank correlation is of the monthly series after
+removing seasonality.
+
+| Scenario | Correlation with default | Seen by both sensors | Burning season | Nationally flagged |
+|---|---|---|---|---|
+| Default | – | 18% | Nov-Feb (peak Dec) | Dec 2025 (low) |
+| 1 km grid | 0.99 | 8% | Dec-Feb | Feb 2020 (high), Dec 2025 (low) |
+| 2 km grid | 1.00 | 13% | Dec-Feb | Dec 2025 (low) |
+| All five platforms | 0.54 | 15% | Nov-Feb | none |
+| Confidence nominal or high | 1.00 | 18% | Nov-Feb | Dec 2025 (low) |
+| High confidence only | 0.78 | 11% | Dec-Jan | Feb 2020 (high), Dec 2025 (low) |
+| Vegetation-type only | 1.00 | 18% | Nov-Feb | Dec 2025 (low) |
+
+Reading: the temporal story and the peak month (December) are insensitive to grid size and to the nominal-confidence and vegetation
+filters. December 2025 is flagged in 6 of 7 scenarios and is lost only when NOAA-20 and NOAA-21 are mixed in part-way through the record,
+which adds overpasses and inflates the baseline spread; this is why the default keeps the constellation constant. February 2020 appears
+only at 1 km and under the high-confidence filter, so it is a choice-dependent finding. The edges of the burning season move by about a
+month. The high-confidence-only scenario keeps a small share of detections and its classes are not comparable across sensors. Monthly
+intervals are not varied; daily and weekly views are exploratory.
+
+### Rainfall context (association only)
+
+`python -m data_pipeline.environment` (part of `run_all`; needs network) fetches NASA POWER monthly precipitation (PRECTOTCORR, mm/day, a
+coarse ~0.5 x 0.625 degree gridded product) at one representative point inside each of the 16 regions and saves the raw responses unchanged
+under `data/raw/environment/`. Ghana is the area-weighted mean of the regions. For each month it reports a percentile among the same
+calendar month in other years, and the rank correlation between burning anomalies and rainfall anomalies (log scale, relative to each
+calendar month's median) at the same month and lags of 1-3 months.
+
+Nationally the same-month correlation is about -0.30 over 167 months (wetter-than-usual months tend to have less burning); lagged
+values are about -0.18, -0.18 and 0.0. These are descriptive. Rainfall can suppress burning, build fuel for later months, or both,
+and many other factors act, so no cause is claimed. Several lags are shown, so a few moderate values can arise by chance. The point
+sample is coarse and recent months can be revised. The one nationally flagged month, December 2025, was also the wettest December in
+the 2012-2025 rainfall record (1.46 mm/day against a typical 0.41), and ranked wettest in 13 of 17 areas; this is offered as context.
+
+### Exports
+
+Per area, sensor view, grid and optional period: calendar, cell and daily/weekly series CSVs (with `#` provenance headers), a summary
+report as Markdown or self-contained printable HTML (use Print, then Save as PDF), and a PNG of every chart (title, legend and
+provenance footer included).
+
 ## 4. Validation performed
 
 Run `python -m data_pipeline.validation` (also part of `run_all`); results are in `data/processed/analytics/validation.json` and on

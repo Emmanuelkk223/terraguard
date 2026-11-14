@@ -3,8 +3,9 @@ import CalendarHeatmap from "../components/CalendarHeatmap";
 import { SeriesChart } from "../components/Charts";
 import MapView from "../components/MapView";
 import MonthDetail from "../components/MonthDetail";
-import { api, exportUrl } from "../services/api";
-import type { AreaQuery, CalRow, Period, Selection, SeriesRow } from "../types";
+import ChartFrame from "../components/ChartFrame";
+import { api, exportUrl, reportUrl } from "../services/api";
+import type { AreaQuery, CalRow, Period, RainRow, Selection, SeriesRow } from "../types";
 
 const MAX_DAILY_DAYS = 1100;
 const DAY_MS = 86_400_000;
@@ -31,6 +32,13 @@ export default function CalendarPage({ rows, q, heading, selection, onSelect, on
   const [wantedInterval, setWantedInterval] = useState<"day" | "week">("day");
   const [series, setSeries] = useState<SeriesRow[]>([]);
   const [seriesError, setSeriesError] = useState<string | null>(null);
+  const [rain, setRain] = useState<RainRow[]>([]);
+
+  // Rainfall context exists for Ghana and its named regions, not for a custom area.
+  useEffect(() => {
+    if (q.bbox) return setRain([]);
+    api.rainfall(q.region).then(setRain).catch(() => setRain([]));
+  }, [q.bbox, q.region]);
 
   // Start with the most recent complete month so the page is never empty.
   useEffect(() => {
@@ -114,7 +122,7 @@ export default function CalendarPage({ rows, q, heading, selection, onSelect, on
 
       <div className="split">
         {singleMonth ? (
-          <MonthDetail row={row} rows={rows} />
+          <MonthDetail row={row} rows={rows} rain={selection ? rain.find((r) => r.year === selection.year && r.month === selection.month) ?? null : null} />
         ) : (
           <aside className="detail" aria-live="polite">
             <h3>{period ? `${period.start} → ${period.end}` : "No period"}</h3>
@@ -140,13 +148,17 @@ export default function CalendarPage({ rows, q, heading, selection, onSelect, on
       <h3>{interval === "day" ? "Daily" : "Weekly"} activity</h3>
       {seriesError ? <p className="error">{seriesError}</p> : series.length ? (
         <>
-          <SeriesChart data={series} interval={interval} onPick={(r) => setPeriod({ start: r.period_start, end: r.period_end })} />
+          <ChartFrame title={`${heading} · ${interval === "day" ? "daily" : "weekly"} active cell-days, ${period?.start} to ${period?.end}`} filename={`terraguard_${interval}_${period?.start}_${period?.end}.png`}>
+            <SeriesChart data={series} interval={interval} onPick={(r) => setPeriod({ start: r.period_start, end: r.period_end })} />
+          </ChartFrame>
           <p className="muted small">Click a bar to zoom the map to that {interval}. Active cell-days: grid cells with at least one detection, counted per {interval === "day" ? "day" : "day within the week"}.</p>
         </>
       ) : <p className="muted">No activity series for this selection.</p>}
 
       <div className="actions">
         <a className="button" href={exportUrl("calendar", q)}>Download calendar CSV</a>
+        <a className="button" href={reportUrl("html", q, period ? { start: period.start, end: period.end } : {})} target="_blank" rel="noreferrer">Summary report (printable)</a>
+        <a className="button" href={reportUrl("md", q, period ? { start: period.start, end: period.end } : {})}>Summary report (Markdown)</a>
         {period && (
           <>
             <a className="button" href={exportUrl("cells", q, { start: period.start, end: period.end })}>Download this period's cells CSV</a>

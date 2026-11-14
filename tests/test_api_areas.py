@@ -159,3 +159,32 @@ def _series_for_comparison(region: str) -> pd.DataFrame:
              "modis_cell_days": season[m - 1] * 0.3, "viirs_cell_days": season[m - 1] * 0.9}
             for y in range(2012, 2026) for m in range(1, 13)]
     return pd.DataFrame(rows)  # perfectly flat per month: exercises the unscorable / NaN paths
+
+
+def test_report_endpoints_render_markdown_and_printable_html(client: TestClient) -> None:
+    md = client.get("/api/export/report.md", params={"region": "North", "start": "2018-01-01", "end": "2018-01-31"})
+    assert md.status_code == 200 and md.headers["content-type"].startswith("text/markdown")
+    assert "attachment" in md.headers["content-disposition"]
+    assert "# TerraGuard summary report" in md.text and "**Area:** North" in md.text
+    assert "Selected period: 2018-01-01 to 2018-01-31" in md.text and "Jan 2018" in md.text  # the planted spike is listed
+    assert "Months with complete data-archive coverage" in md.text  # data-quality section from the fixture metadata
+    html = client.get("/api/export/report.html", params={"bbox": "-3,8,1,25", "sensor": "viirs"})
+    assert html.status_code == 200 and html.headers["content-type"].startswith("text/html")
+    assert "Custom area" in html.text and "VIIRS only" in html.text and "<script" not in html.text
+    assert client.get("/api/export/report.md", params={"start": "2018-01-01"}).status_code == 422  # one date alone
+    assert client.get("/api/export/report.md", params={"region": "Atlantis"}).status_code == 422
+
+
+def test_rainfall_endpoints_serve_context_and_validate_region(client: TestClient, tmp_path: Path) -> None:
+    assert client.get("/api/environment/rainfall").status_code == 503  # not generated yet
+    folder = tmp_path / "data" / "processed" / "environment"
+    folder.mkdir(parents=True)
+    pd.DataFrame({"region": ["Ghana", "Ghana", "North"], "year": [2025, 2024, 2025], "month": [12, 12, 12],
+                  "rainfall_mm_per_day": [1.5, 0.1, 0.2], "rainfall_mm": [46.5, 3.1, 6.2], "rain_percentile": [1.0, 0.1, 0.5],
+                  "rain_median_mm_per_day": [0.4, 0.4, 0.2]}).to_csv(folder / "rainfall_monthly.csv", index=False)
+    (folder / "rainfall_association.json").write_text(json.dumps({"association": {"Ghana": {"lag0": {"spearman": -0.3, "n": 167}}},
+                                                                  "notes": ["Association is not causation."]}), encoding="utf-8")
+    body = client.get("/api/environment/rainfall", params={"region": "Ghana"}).json()
+    assert body["region"] == "Ghana" and len(body["data"]) == 2 and body["data"][0]["rain_percentile"] in (1.0, 0.1)
+    assert client.get("/api/environment/rainfall", params={"region": "Atlantis"}).status_code == 422
+    assert client.get("/api/environment/association").json()["association"]["Ghana"]["lag0"]["n"] == 167

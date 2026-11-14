@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from . import atomic
 from .pipeline import (
     add_derived_fields,
     canonicalize,
@@ -74,8 +75,8 @@ def process_product(
     retained["confidence"] = retained["confidence"].astype("string")
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    retained.to_parquet(output_dir / f"{product}.parquet", index=False)
-    exclusions.to_csv(output_dir / f"{product}_exclusions.csv", index=False)
+    atomic.to_parquet(retained, output_dir / f"{product}.parquet", index=False)
+    atomic.to_csv(exclusions, output_dir / f"{product}_exclusions.csv", index=False)
     return {
         "source_files": len(files),
         "missing_values": {
@@ -120,7 +121,7 @@ def process(input_dir: Path, output_dir: Path, *, boundary: Path | None = None) 
         "observation_counts_by_sensor": _by_sensor(products),
     }
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    atomic.write_text(output_dir / "metadata.json", json.dumps(metadata, indent=2))
     return metadata
 
 

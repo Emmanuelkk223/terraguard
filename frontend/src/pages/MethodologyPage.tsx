@@ -33,6 +33,13 @@ export default function MethodologyPage() {
         TerraGuard does not predict fires or issue alerts.
       </p>
 
+      <h3>Sensitivity, rainfall and exports</h3>
+      <p>
+        The Sensor harmonization page re-runs the analysis under other reasonable choices (grid size, platform set, quality filters) and shows which
+        conclusions move. Rainfall (NASA POWER, a coarse gridded product) is shown beside burning as context only: it is an association, not a cause.
+        Reports and CSV files carry their area, sensor view, grid and method version, and every chart can be downloaded as a PNG.
+      </p>
+
       <h3>Limitations</h3>
       <ul>
         <li>The common grid does not make the sensors equivalent: VIIRS still detects far more, and the two sensors flag the same cell on the same day only a small minority of the time.</li>
@@ -46,7 +53,7 @@ export default function MethodologyPage() {
 
       <h3>Credits</h3>
       <p>
-        Fire data: NASA FIRMS (LANCE/EOSDIS). Region boundaries: geoBoundaries (CC BY-SA 2.0). Map tiles: OpenStreetMap contributors, CARTO.
+        Fire data: NASA FIRMS (LANCE/EOSDIS). Region boundaries: geoBoundaries (CC BY-SA 2.0). Rainfall: NASA POWER. Map tiles: OpenStreetMap contributors.
       </p>
     </section>
   );
