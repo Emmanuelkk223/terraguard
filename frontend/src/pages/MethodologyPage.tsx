@@ -53,7 +53,7 @@ export default function MethodologyPage() {
 
       <h3>Credits</h3>
       <p>
-        Fire data: NASA FIRMS (LANCE/EOSDIS). Region boundaries: geoBoundaries (CC BY-SA 2.0). Rainfall: NASA POWER. Map tiles: OpenStreetMap contributors.
+        Fire data: NASA FIRMS (LANCE/EOSDIS). Region boundaries: geoBoundaries (CC BY-SA 2.0). Place names: GeoNames (CC BY 4.0). Rainfall: NASA POWER. Map tiles: OpenStreetMap contributors.
       </p>
     </section>
   );

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "./services/api";
 import type {
-  AnnualRow, AreaQuery, CalRow, Grid, HarmonizationMeta, SeasonalRow, Selection, Sensor, Validation,
+  AnnualRow, AreaQuery, CalRow, Grid, HarmonizationMeta, Place, SeasonalRow, Selection, Sensor, Validation,
 } from "./types";
 import Overview from "./pages/Overview";
 import CalendarPage from "./pages/CalendarPage";
@@ -10,6 +10,9 @@ import SensorsPage from "./pages/SensorsPage";
 import AnomaliesPage from "./pages/AnomaliesPage";
 import DataPage from "./pages/DataPage";
 import MethodologyPage from "./pages/MethodologyPage";
+import PlaceBanner from "./components/PlaceBanner";
+import PlaceSearch from "./components/PlaceSearch";
+import { boxAround, boxToString, DEFAULT_RADIUS_KM, type Focus } from "./services/places";
 
 const TABS = [
   ["overview", "Overview"],
@@ -47,10 +50,74 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0); // bumped to reload the data
   const retries = useRef(0);
+  const [place, setPlace] = useState<Place | null>(null); // a town chosen through search
+  const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM);
+  const [focus, setFocus] = useState<Focus | null>(null);
+  const nonce = useRef(0);
 
   const q: AreaQuery = useMemo(() => ({ grid, region, bbox, sensor }), [grid, region, bbox, sensor]);
-  const areaName = bbox ? "Custom area" : region;
-  const heading = sensor === "harmonized" ? areaName : `${areaName} · ${SENSOR_LABEL[sensor]}`;
+  const areaName = bbox ? "Custom area" : region; // used for logic: rainfall and model comparison exist for named areas only
+  const townArea = bbox && place && place.covered && place.kind !== "country" && place.kind !== "region";
+  const areaTitle = townArea ? `${place!.name} (${radiusKm} km)` : areaName; // used for display
+  const heading = sensor === "harmonized" ? areaTitle : `${areaTitle} · ${SENSOR_LABEL[sensor]}`;
+
+  /** Draw/type a box yourself: that replaces any place chosen through search. */
+  const setBboxManually = (box: string | null) => {
+    setPlace(null);
+    setBbox(box);
+  };
+
+  const flyTo = (next: Omit<Focus, "nonce">) => {
+    nonce.current += 1;
+    setFocus({ ...next, nonce: nonce.current });
+  };
+
+  const choosePlace = (p: Place) => {
+    setTab("calendar");
+    if (p.kind === "country") {
+      setPlace(null);
+      if (p.covered) {
+        setBbox(null);
+        setRegion("Ghana");
+      } else {
+        setPlace(p); // explains that there is no data for this country yet
+        setBbox(null);
+        setRegion("Ghana"); // the analysis stays on the data we have; only the map moves
+      }
+      flyTo({ lat: p.lat, lon: p.lon, name: p.name, covered: p.covered, box: p.bbox, pin: false });
+    } else if (p.kind === "region") {
+      setPlace(null);
+      setBbox(null);
+      setRegion(p.region ?? p.name.replace(/ Region$/, ""));
+      flyTo({ lat: p.lat, lon: p.lon, name: p.name, covered: true, box: p.bbox, pin: false });
+    } else if (p.covered) {
+      const box = boxAround(p.lat, p.lon, radiusKm);
+      setPlace(p);
+      setBbox(boxToString(box));
+      flyTo({ lat: p.lat, lon: p.lon, name: p.name, covered: true, box, pin: true });
+    } else {
+      setPlace(p); // no data for this country: the page returns to Ghana and only the map moves
+      setBbox(null);
+      setRegion("Ghana");
+      flyTo({ lat: p.lat, lon: p.lon, name: p.name, covered: false, pin: true });
+    }
+  };
+
+  const changeRadius = (km: number) => {
+    setRadiusKm(km);
+    if (place && townArea) {
+      const box = boxAround(place.lat, place.lon, km);
+      setBbox(boxToString(box));
+      flyTo({ lat: place.lat, lon: place.lon, name: place.name, covered: true, box, pin: true });
+    }
+  };
+
+  const clearPlace = () => {
+    setPlace(null);
+    setBbox(null);
+    setRegion("Ghana");
+    flyTo({ lat: 7.95, lon: -1.0, name: "Ghana", covered: true, box: [-3.3, 4.7, 1.3, 11.2], pin: false });
+  };
 
   useEffect(() => {
     api.harmonization().then(setMeta).catch(() => setMeta(null));
@@ -119,13 +186,14 @@ export default function App() {
             <p>Turning satellite fire observations into actionable environmental intelligence</p>
           </div>
         </div>
+        <PlaceSearch onSelect={choosePlace} />
         <div className="controls">
           <label>
             Area
             {bbox ? (
               <span className="chip" title={`West, south, east, north: ${bbox}`}>
-                Custom area
-                <button type="button" className="chip-x" onClick={() => setBbox(null)} aria-label="Clear custom area">✕</button>
+                {townArea ? place!.name : "Custom area"}
+                <button type="button" className="chip-x" onClick={() => { setPlace(null); setBbox(null); }} aria-label="Clear the chosen area">✕</button>
               </span>
             ) : (
               <select value={region} onChange={(e) => setRegion(e.target.value)}>
@@ -154,6 +222,15 @@ export default function App() {
           <button key={id} className={tab === id ? "on" : ""} onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined}>{label}</button>
         ))}
       </nav>
+      {place && (
+        <PlaceBanner
+          place={place}
+          radiusKm={radiusKm}
+          onRadius={changeRadius}
+          onWholeRegion={() => { const r = place.region; setPlace(null); setBbox(null); if (r) setRegion(r); }}
+          onClear={clearPlace}
+        />
+      )}
       <main>
         {loading && (rows.length ? <span className="updating" role="status">Updating…</span> : <p className="muted">Loading…</p>)}
         {error && (
@@ -164,7 +241,7 @@ export default function App() {
         )}
         {ready && tab === "overview" && <Overview rows={rows} annual={annual} region={heading} onOpenCalendar={() => setTab("calendar")} />}
         {ready && tab === "calendar" && (
-          <CalendarPage rows={rows} q={q} heading={heading} selection={selection} onSelect={setSelection} onBbox={setBbox} />
+          <CalendarPage rows={rows} q={q} heading={heading} selection={selection} onSelect={setSelection} onBbox={setBboxManually} focus={focus} />
         )}
         {ready && tab === "historical" && <HistoricalPage annual={annual} seasonal={seasonal} rows={rows} grid={grid} region={heading} area={areaName} />}
         {ready && tab === "sensors" && <SensorsPage rows={rowsBoth} meta={meta} validation={validation} grid={grid} region={areaName} />}

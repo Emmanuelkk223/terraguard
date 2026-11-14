@@ -5,6 +5,7 @@ import MapView from "../components/MapView";
 import MonthDetail from "../components/MonthDetail";
 import ChartFrame from "../components/ChartFrame";
 import { api, exportUrl, reportUrl } from "../services/api";
+import type { Focus } from "../services/places";
 import type { AreaQuery, CalRow, Period, RainRow, Selection, SeriesRow } from "../types";
 
 const MAX_DAILY_DAYS = 1100;
@@ -25,9 +26,10 @@ interface Props {
   selection: Selection | null;
   onSelect: (s: Selection) => void;
   onBbox: (bbox: string | null) => void;
+  focus?: Focus | null;
 }
 
-export default function CalendarPage({ rows, q, heading, selection, onSelect, onBbox }: Props) {
+export default function CalendarPage({ rows, q, heading, selection, onSelect, onBbox, focus = null }: Props) {
   const [period, setPeriod] = useState<Period | null>(selection ? monthPeriod(selection) : null);
   const [wantedInterval, setWantedInterval] = useState<"day" | "week">("day");
   const [series, setSeries] = useState<SeriesRow[]>([]);
@@ -142,7 +144,7 @@ export default function CalendarPage({ rows, q, heading, selection, onSelect, on
             </p>
           </aside>
         )}
-        <MapView q={q} period={period} onBbox={onBbox} />
+        <MapView q={q} period={period} onBbox={onBbox} focus={focus} />
       </div>
 
       <h3>{interval === "day" ? "Daily" : "Weekly"} activity</h3>

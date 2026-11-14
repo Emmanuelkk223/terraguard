@@ -9,6 +9,20 @@ export type Status =
   | "above_flat_baseline"
   | "below_flat_baseline";
 
+export interface Place {
+  id: number;
+  name: string;
+  kind: "city" | "town" | "place" | "region" | "country";
+  admin1: string | null;
+  country: string;
+  country_code: string;
+  lat: number;
+  lon: number;
+  covered: boolean; // TerraGuard has fire data for this place
+  region: string | null; // the Ghana region TerraGuard analyses, for places in Ghana
+  bbox?: [number, number, number, number]; // countries and regions
+}
+
 export type Sensor = "harmonized" | "modis" | "viirs";
 
 /** Which data the whole app is looking at: grid, named region or custom box, and sensor view. */

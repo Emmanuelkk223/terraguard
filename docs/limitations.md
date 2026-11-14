@@ -48,6 +48,13 @@ TerraGuard is a prototype for exploring satellite-detected burning activity. Rea
 - The sensitivity analysis varies grid size, platform set and quality filters; it does not vary the monthly interval, and there is no
   ground truth by which any scenario could be called correct.
 
+**Place search**
+- Search covers West Africa (16 countries) but fire data exist for **Ghana only**. A place elsewhere moves the map and says so; it shows no detections.
+- Place names and coordinates come from GeoNames, which is crowd-sourced: some villages are missing, names vary in spelling, and several places can share a
+  name (the list shows region and coordinates to tell them apart). Population is mostly unknown, so ranking uses administrative importance.
+- Choosing a Ghanaian town analyses a square of 10, 25 or 50 km half-width around it (cells are assigned by centre). Small areas hold few grid cells, so
+  swings are larger and flags less stable; the Ghana region is offered as a steadier alternative.
+
 **Not provided**
 - No fire prediction, early warning, burned-area mapping or statements about specific fires, communities or damage.
 - The unauthenticated API and OpenStreetMap tile usage are suitable for development and demonstration only.

@@ -133,3 +133,12 @@ detections returns zero-valued rows, not an error.
 | `GET /api/environment/rainfall?region=` | Monthly rainfall with percentile for Ghana or a named region (422 otherwise) |
 | `GET /api/environment/association` | Descriptive burning-rainfall rank correlations (association, not causation) |
 | `GET /api/seasonal/regions` | Seasonal statistics for every region at once |
+
+## Place search
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/places/search?q=&limit=` | Matches for a town, city, region or country across West Africa, best first (`limit` 1-20, `q` up to 80 characters, at least 2 to match). Accent- and case-insensitive; a trailing country restricts the search (`Kumasi, Ghana`, `Abidjan Ivory Coast`). Each match has `kind` (city, town, place, region, country), `admin1`, `country`, coordinates, `covered` (TerraGuard has fire data there), the Ghana `region` where relevant, and a `bbox` for countries and regions |
+| `GET /api/places/coverage` | Which countries have fire data and which are searchable |
+
+Search runs against a local gazetteer; what a user types is not sent to any other service. 503 if the gazetteer file is missing.

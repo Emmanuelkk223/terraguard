@@ -1,5 +1,5 @@
 import type {
-  AnnualRow, AreaQuery, CalRow, CellCollection, HarmonizationMeta, MethodComparison, Period, Quality, RainAssociation, RainRow, SeasonalRow, SensitivityReport, SeriesRow, Validation,
+  AnnualRow, AreaQuery, CalRow, CellCollection, HarmonizationMeta, MethodComparison, Period, Place, Quality, RainAssociation, RainRow, SeasonalRow, SensitivityReport, SeriesRow, Validation,
 } from "../types";
 
 export class ApiError extends Error {
@@ -16,9 +16,9 @@ function queryString(params: Params): string {
   return query.toString();
 }
 
-async function getJSON<T>(path: string, params: Params = {}): Promise<T> {
+async function getJSON<T>(path: string, params: Params = {}, signal?: AbortSignal): Promise<T> {
   const qs = queryString(params);
-  const response = await fetch(`/api/${path}${qs ? `?${qs}` : ""}`);
+  const response = await fetch(`/api/${path}${qs ? `?${qs}` : ""}`, { signal });
   if (!response.ok) {
     let detail = response.statusText;
     try {
@@ -51,6 +51,8 @@ export const api = {
   validation: () => getJSON<Validation>("validation"),
   rainfall: (region: string) => getJSON<{ data: RainRow[] }>("environment/rainfall", { region }).then((r) => r.data),
   rainfallAssociation: () => getJSON<RainAssociation>("environment/association"),
+  searchPlaces: (q: string, limit: number, signal?: AbortSignal) =>
+    getJSON<{ data: Place[]; covered_countries: string[] }>("places/search", { q, limit }, signal),
   sensitivity: () => getJSON<SensitivityReport>("sensitivity"),
   modelComparison: () => getJSON<MethodComparison>("model-comparison"),
   seasonalAllRegions: (grid: AreaQuery["grid"]) => getJSON<{ data: SeasonalRow[] }>("seasonal/regions", { grid }).then((r) => r.data),

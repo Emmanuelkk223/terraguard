@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.harmonized_routes import register as register_harmonized_routes
+from backend.app.places_routes import register as register_places_routes
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MAX_PAGE_SIZE = 1000
@@ -251,6 +252,7 @@ def create_app(root: Path | str = REPO_ROOT) -> FastAPI:
         allow_headers=["*"],
     )
     register_harmonized_routes(app, store, _jsonable)
+    register_places_routes(app, store)
     return app
 
 

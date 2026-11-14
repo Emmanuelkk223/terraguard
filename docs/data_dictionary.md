@@ -63,3 +63,16 @@ each with its number of paired months, plus the sample points, source, retrieval
 - `model_comparison.json`: baseline versus Isolation Forest (held-out flags, agreement, synthetic sensitivity with AUC).
 - `sensitivity.json`: national summary of each sensitivity scenario (series correlation, sensor agreement, season, flagged months).
 - `validation.json`: sensor agreement statistics and overpass-time drift.
+
+## Place gazetteer - `data/reference/west_africa_places.parquet`
+One row per populated place, region or country (GeoNames, CC BY 4.0; see `data/reference/ATTRIBUTION.md`).
+
+| Column | Meaning |
+|---|---|
+| `id`, `name`, `kind` | GeoNames id (negative for countries and regions), display name, `city` / `town` / `place` / `region` / `country` |
+| `norm`, `alt_norm` | Accent-folded, lower-case name and alternate names used for matching |
+| `admin1`, `country`, `country_code` | First-level region (as GeoNames names it), country and ISO code |
+| `lat`, `lon`, `population`, `feature_code` | Coordinates; population (mostly 0 = unknown); GeoNames feature code |
+| `seat_rank` | Administrative importance: capital 4, regional seat 3, district seats 2 and 1, other 0 (countries and regions 5) |
+| `ghana_region` | For Ghana: which of TerraGuard's 16 regions the place falls in |
+| `west`, `south`, `east`, `north` | Bounding box for countries and Ghana regions |

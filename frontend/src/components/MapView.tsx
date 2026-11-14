@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { GeoJSON, MapContainer, Popup, Rectangle, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { CircleMarker, GeoJSON, MapContainer, Popup, Rectangle, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import type { LatLng, LatLngBoundsExpression, PathOptions } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { api } from "../services/api";
 import { infernoColor } from "../services/colors";
+import type { Focus } from "../services/places";
 import type { AreaQuery, CellCollection, CellFeature, Grid, Period } from "../types";
 
 const regionStyle: PathOptions = { color: "#4f9d69", weight: 1, fill: false, opacity: 0.85 };
@@ -128,13 +129,38 @@ function DrawLayer({ active, onDone }: { active: boolean; onDone: (box: Box) => 
   return <Rectangle bounds={[[start.lat, start.lng], [current.lat, current.lng]]} interactive={false} pathOptions={boxStyle} />;
 }
 
+/** Moves the map to a place chosen in the search box (and marks it). */
+function FlyToPlace({ focus }: { focus: Focus | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!focus) return;
+    if (focus.box) {
+      map.flyToBounds([[focus.box[1], focus.box[0]], [focus.box[3], focus.box[2]]], { padding: [30, 30], duration: 1.1, maxZoom: 11 });
+    } else {
+      map.flyTo([focus.lat, focus.lon], 10, { duration: 1.1 });
+    }
+  }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!focus?.pin) return null;
+  return (
+    <CircleMarker
+      center={[focus.lat, focus.lon]}
+      radius={9}
+      interactive={false}
+      pathOptions={{ color: "#ffffff", weight: 3, fillColor: focus.covered ? "#f2b84b" : "#8a9db2", fillOpacity: 1 }}
+    >
+      <Tooltip permanent direction="top" offset={[0, -10]} className="place-pin">{focus.name}</Tooltip>
+    </CircleMarker>
+  );
+}
+
 interface Props {
   q: AreaQuery;
   period: Period | null;
   onBbox: (bbox: string | null) => void;
+  focus?: Focus | null;
 }
 
-export default function MapView({ q, period, onBbox }: Props) {
+export default function MapView({ q, period, onBbox, focus = null }: Props) {
   const [cells, setCells] = useState<CellCollection | null>(null);
   const [outline, setOutline] = useState<GeoJSON.FeatureCollection | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -227,7 +253,7 @@ export default function MapView({ q, period, onBbox }: Props) {
       </div>
 
       <div className={`map-wrap ${drawing ? "drawing" : ""}`}>
-      <MapContainer center={[7.95, -1.0]} zoom={7} minZoom={6} className="map" preferCanvas>
+      <MapContainer center={[7.95, -1.0]} zoom={7} minZoom={4} className="map" preferCanvas>
         <TileLayer
           className="basemap-dark"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -239,6 +265,7 @@ export default function MapView({ q, period, onBbox }: Props) {
           <CellLayer features={cells.features} maxDays={maxDays} cellKm={GRID_KM[q.grid]} pinned={pinned} drawing={drawing} onPick={onPick} />
         )}
         {box && <Rectangle bounds={[[box[1], box[0]], [box[3], box[2]]]} interactive={false} pathOptions={boxStyle} />}
+        <FlyToPlace focus={focus} />
         <DrawLayer active={drawing} onDone={(b) => { setDrawing(false); onBbox(b.join(",")); }} />
         {active && (
           <Popup
