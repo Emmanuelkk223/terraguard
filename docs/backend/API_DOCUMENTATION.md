@@ -83,3 +83,23 @@ python -m pytest -q
 API unit tests use temporary analytical fixtures only. Real-data integration
 checks against repository outputs must not be interpreted as synthetic
 scientific findings.
+
+## Harmonized endpoints (dashboard)
+
+These read `data/processed/harmonized/` and `data/processed/analytics/`. `grid` is `1km`, `2km` or `5km` (default `5km`);
+`region` is `Ghana` or one of the 16 regions from `/api/regions`. Unknown regions or grids return 422; missing generated data
+returns 503.
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/harmonization` | Method, version, platforms, coverage rule, clip and per-grid summary |
+| `GET /api/regions` | Region names available for a grid |
+| `GET /api/calendar` | Monthly rows with baseline, differences, status, reliability and explanation (`start_year`, `end_year` optional) |
+| `GET /api/calendar/anomalies` | Flagged months ordered by score magnitude (`region`, `direction=high|low`) |
+| `GET /api/seasonal`, `GET /api/annual` | Seasonal statistics and annual totals (`complete_year` marks full-coverage years) |
+| `GET /api/map/cells` | Cell centres for one `year`/`month` (and optional `region`) with active days and per-sensor detections, as GeoJSON points; capped at 20,000 cells with `truncated` set |
+| `GET /api/boundaries` | Simplified Ghana ADM1 outline (geoBoundaries, CC BY-SA 2.0) |
+| `GET /api/export/calendar.csv` | Calendar rows as CSV with `#` provenance header lines |
+| `GET /api/export/cells.csv` | One month's cells as CSV with `#` provenance header lines |
+
+CORS allows the Vite dev origins (`localhost:5173`); the dev server also proxies `/api`.

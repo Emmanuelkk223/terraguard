@@ -1,0 +1,46 @@
+# Data dictionary
+
+## Processed observations - `data/processed/observations/<product>.parquet`
+One row per validated FIRMS detection. Original FIRMS columns are kept; these are added or normalised.
+
+| Column | Meaning |
+|---|---|
+| `acq_datetime` | UTC timestamp from `acq_date` + HHMM `acq_time` (timezone-naive, UTC) |
+| `sensor` | `MODIS` or `VIIRS` |
+| `platform` | Terra, Aqua, Suomi-NPP, NOAA-20, NOAA-21 (from FIRMS `satellite`: Terra, Aqua, N, N20, N21) |
+| `source_product`, `source_file` | Provenance of the row |
+| `confidence` | Original FIRMS value as text (MODIS 0-100; VIIRS l/n/h) |
+| `confidence_class` | low/nominal/high within the product (MODIS <30, 30-79, >=80); not comparable across sensors |
+| `type` | Original FIRMS type (0 presumed vegetation fire, 2 other static land source, 3 offshore) |
+| `is_presumed_vegetation_fire` | True for type 0, False for other types, missing if unknown |
+| `frp` | Fire radiative power, MW (not a count; not calibrated across sensors) |
+
+## Harmonized cell-days - `data/processed/harmonized/cell_days_<grid>.parquet`
+| Column | Meaning |
+|---|---|
+| `date` | UTC day |
+| `grid_x`, `grid_y` | Integer cell indices of the regular grid (cell centre via `cell_centres`) |
+| `modis_detections`, `viirs_detections` | Detections of each sensor in this cell-day |
+| `occupied_by` | `both`, `MODIS_only`, `VIIRS_only` |
+| `region` | Ghana region of the cell centre |
+
+## Monthly series - `data/processed/harmonized/monthly_<grid>.csv`
+One row per region (and `Ghana`) per month.
+
+| Column | Meaning |
+|---|---|
+| `active_cell_days` | Harmonized index: cell-days with a detection from either sensor |
+| `modis_cell_days`, `viirs_cell_days`, `both_cell_days` | Cell-days seen by each sensor / both |
+| `modis_detections`, `viirs_detections` | Raw detection counts (kept separate) |
+| `agreement_jaccard` | `both_cell_days / active_cell_days` |
+| `raw_viirs_to_modis_ratio`, `cell_day_viirs_to_modis_ratio` | Sensor ratios before / after aggregation |
+| `modis_archive_ok`, `viirs_archive_ok` | Archive covers the whole month for the selected products |
+| `coverage_ok` | Both archives complete; incomplete months are excluded from baselines |
+| `modis_days_with_records`, `viirs_days_with_records`, `days_in_month` | Diagnostics only |
+
+## Calendar analytics - `data/processed/analytics/`
+`calendar_<grid>.csv` adds, per region-month: `baseline_n`, `baseline_median`, `baseline_mad`, `abs_diff`, `pct_diff`,
+`robust_score`, `threshold`, `status`, `reliable`, `explanation`. `status` is one of `typical`, `unusually_high`, `unusually_low`,
+`incomplete_coverage`, `insufficient_baseline`, `above_flat_baseline`, `below_flat_baseline`.
+`annual_<grid>.csv` (with `complete_year`), `seasonal_<grid>.csv` (median, mean, min/max and their years across complete years),
+and `anomalies_<grid>.csv` (flagged rows only).
