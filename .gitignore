@@ -11,3 +11,6 @@ data/processed/*
 node_modules/
 frontend/dist/
 *.log
+
+# local assistant/editor settings
+.claude/
