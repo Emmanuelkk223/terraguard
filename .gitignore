@@ -14,3 +14,6 @@ frontend/dist/
 
 # local assistant/editor settings
 .claude/
+
+# documentation stays local, not pushed
+docs/
