@@ -1,12 +1,65 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { api } from "../services/api";
+import FireMap from "../components/FireMap";
 
 export type GoTarget = "overview" | "calendar" | "historical" | "sensors" | "anomalies" | "data" | "method";
 
 interface Props {
   onGo: (tab: GoTarget, options?: { steady?: boolean }) => void;
   onSearch: () => void;
+  onGuide?: () => void;
+  onCountry?: (iso2: string) => void;
 }
+
+/** Adds .in to every .reveal element inside the page once it scrolls into view (sections fade and rise in). */
+function useReveal(root: React.RefObject<HTMLElement>) {
+  useEffect(() => {
+    const items = root.current?.querySelectorAll<HTMLElement>(".reveal") ?? [];
+    if (!("IntersectionObserver" in window)) { items.forEach((el) => el.classList.add("in")); return; }
+    const seen = new IntersectionObserver((entries) => entries.forEach((e) => {
+      if (e.isIntersecting) { e.target.classList.add("in"); seen.unobserve(e.target); }
+    }), { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
+    items.forEach((el) => seen.observe(el));
+    return () => seen.disconnect();
+  }, [root]);
+}
+
+/** A number that counts up when it first comes into view. */
+function CountUp({ to, decimals = 0, suffix = "" }: { to: number; decimals?: number; suffix?: string }) {
+  const el = useRef<HTMLSpanElement>(null);
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    const node = el.current;
+    if (!node) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) { setValue(to); return; }
+    let frame = 0;
+    const seen = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return;
+      seen.disconnect();
+      const start = performance.now();
+      const tick = (now: number) => {
+        const t = Math.min(1, (now - start) / 1600);
+        setValue(to * (1 - (1 - t) ** 4));
+        if (t < 1) frame = requestAnimationFrame(tick);
+      };
+      frame = requestAnimationFrame(tick);
+    });
+    seen.observe(node);
+    return () => { seen.disconnect(); cancelAnimationFrame(frame); };
+  }, [to]);
+  return <span ref={el}>{value.toLocaleString("en-GB", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}</span>;
+}
+
+const ICONS = ["🚨", "🌾", "🔬", "🚒"];
+const EMBERS = Array.from({ length: 22 }, (_, i) => ({
+  left: `${(i * 37) % 100}%`, delay: `${(i * 0.73) % 7}s`, duration: `${6 + ((i * 1.7) % 6)}s`, size: `${2 + (i % 4)}px`, drift: `${((i % 5) - 2) * 18}px`,
+}));
+const FLOW = [
+  { icon: "🛰️", title: "Two satellite records", text: "MODIS (Terra, Aqua) since 2000 and VIIRS (Suomi-NPP, NOAA-20, NOAA-21) since 2012 see the same fires differently." },
+  { icon: "▦", title: "One common grid", text: "Every detection lands in a 1, 2 or 5 km square on a UTC day. One square-day counts once, whoever saw it." },
+  { icon: "📅", title: "A fair calendar", text: "Months are compared on the steady satellite set, and 2002–2011 is bridged from MODIS with a stated range." },
+  { icon: "⚑", title: "Unusual, explained", text: "Each month is set against the same month in other years, flagged only when far outside, with the reason in words." },
+];
 
 interface Audience {
   who: string;
@@ -96,7 +149,9 @@ const TIPS: [string, string][] = [
   ["Take the evidence with you", "Every export names its source, method, area and dates, so a colleague can see exactly what the numbers are."],
 ];
 
-export default function Landing({ onGo, onSearch }: Props) {
+export default function Landing({ onGo, onSearch, onGuide, onCountry }: Props) {
+  const page = useRef<HTMLElement>(null);
+  useReveal(page);
   const [asOf, setAsOf] = useState<string | null>(null);
   useEffect(() => {
     api.currentComparison({ grid: "5km", region: "Ghana", bbox: null, sensor: "harmonized" }, 30)
@@ -106,31 +161,57 @@ export default function Landing({ onGo, onSearch }: Props) {
   const latest = asOf ? new Date(`${asOf}T00:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" }) : "today";
 
   return (
-    <section className="landing">
-      <div className="land-hero">
-        <div className="kicker">Satellite fire history · Ghana first, then all of West Africa</div>
-        <h2>Is this month’s burning unusual compared with history?</h2>
-        <p className="land-lead">
-          TerraGuard turns NASA’s two fire-satellite records (MODIS and VIIRS), which cannot simply be added together, into one fair burning calendar from 2002 to today.
-          Pick a place and see when it usually burns, how now compares with the past, and download the evidence.
-        </p>
-        <div className="land-actions">
-          <button type="button" className="primary" onClick={() => onGo("calendar")}>Open the burning calendar →</button>
-          <button type="button" className="tool" onClick={() => onGo("overview")}>See the overview</button>
-          <button type="button" className="tool" onClick={onSearch}>Search my town</button>
+    <section className="landing" ref={page}>
+      <div className="lhero">
+        <div className="lhero-sky" aria-hidden="true">
+          <span className="aurora a1" /><span className="aurora a2" /><span className="aurora a3" />
+          {EMBERS.map((e, i) => (
+            <i key={i} className="ember" style={{ left: e.left, animationDelay: e.delay, animationDuration: e.duration, width: e.size, height: e.size, ["--drift" as string]: e.drift } as CSSProperties} />
+          ))}
         </div>
-        <ul className="land-facts" aria-label="At a glance">
-          <li><b>Aug 2002 – {latest}</b><span>fire history</span></li>
-          <li><b>16 countries</b><span>Ghana in full detail</span></li>
-          <li><b>NASA data</b><span>FIRMS fires, POWER rainfall</span></li>
-          <li><b>Free</b><span>CSV, reports, charts</span></li>
-        </ul>
+        <div className="lhero-text">
+          <div className="kicker lhero-kicker"><span className="live-dot" aria-hidden="true" /> NASA satellite fire history · Ghana first, all of West Africa</div>
+          <h2 className="lhero-title">
+            Is this month’s burning <span className="lhero-hot">unusual</span>
+            <br />compared with history?
+          </h2>
+          <p className="land-lead lhero-lead">
+            TerraGuard turns NASA’s two fire-satellite records, MODIS and VIIRS, which cannot simply be added together, into one fair burning calendar from 2002 to today.
+            Pick a place and see when it usually burns, how now compares with the past, and download the evidence.
+          </p>
+          <div className="land-actions lhero-actions">
+            <button type="button" className="primary lhero-cta" onClick={() => onGo("calendar")}>Open the burning calendar <span aria-hidden="true">→</span></button>
+            <button type="button" className="tool" onClick={onSearch}>🔎 Search my town</button>
+            {onGuide && <button type="button" className="tool lhero-guide" onClick={onGuide}>🤖 Ask TerraGuide</button>}
+          </div>
+          <ul className="lhero-stats" aria-label="At a glance">
+            <li><b><CountUp to={24} suffix=" yrs" /></b><span>Aug 2002 – {latest}</span></li>
+            <li><b><CountUp to={16} /></b><span>countries, Ghana in full detail</span></li>
+            <li><b><CountUp to={5} /></b><span>satellites, all counted</span></li>
+            <li><b><CountUp to={18.9} decimals={1} suffix="M" /></b><span>active cell-days mapped</span></li>
+          </ul>
+        </div>
+        <div className="lhero-map">
+          <FireMap onPick={onCountry ? (iso2) => onCountry(iso2) : undefined} />
+        </div>
       </div>
 
-      <h3>Who it is for, and where to start</h3>
+      <h3 className="reveal">How TerraGuard works</h3>
+      <ol className="flow">
+        {FLOW.map((f, i) => (
+          <li key={f.title} className="flow-step reveal" style={{ ["--i" as string]: i } as CSSProperties}>
+            <span className="flow-icon" aria-hidden="true">{f.icon}</span>
+            <b>{f.title}</b>
+            <p>{f.text}</p>
+          </li>
+        ))}
+      </ol>
+
+      <h3 className="reveal">Who it is for, and where to start</h3>
       <div className="aud-grid">
-        {AUDIENCES.map((a) => (
-          <article key={a.who} className="aud-card">
+        {AUDIENCES.map((a, i) => (
+          <article key={a.who} className="aud-card reveal" style={{ ["--i" as string]: i } as CSSProperties}>
+            <span className="aud-icon" aria-hidden="true">{ICONS[i]}</span>
             <h4>{a.who}</h4>
             <p className="aud-q">“{a.question}”</p>
             <ol>
@@ -143,38 +224,38 @@ export default function Landing({ onGo, onSearch }: Props) {
         ))}
       </div>
 
-      <h3>Start in four steps</h3>
-      <ol className="land-steps">
+      <h3 className="reveal">Start in four steps</h3>
+      <ol className="land-steps reveal">
         <li><b>Choose a place.</b> Search a town, type a latitude and longitude such as <code>6.69, -1.62</code>, pick an area from the menu (Ghana first), or draw a box on the map.</li>
         <li><b>Choose what to compare.</b> Sensor view: all satellites, the steady set (best for comparing years), MODIS only or VIIRS only.</li>
         <li><b>Read the calendar.</b> One square per month; brighter means more burning. ▲ ▼ mark unusual months, dashed squares are estimates, +N20 and +N21 mark when extra satellites joined.</li>
         <li><b>Click and download.</b> Click a month for its map and the comparison with other years, then download the data, every hotspot or a report.</li>
       </ol>
 
-      <h3>What you can and cannot get</h3>
+      <h3 className="reveal">What you can and cannot get</h3>
       <div className="can-grid">
-        <div className="can-card yes">
+        <div className="can-card yes reveal">
           <h4>You can</h4>
           <ul>{CAN.map((t) => <li key={t}>{t}</li>)}</ul>
         </div>
-        <div className="can-card no">
+        <div className="can-card no reveal" style={{ ["--i" as string]: 1 } as CSSProperties}>
           <h4>You cannot</h4>
           <ul>{CANNOT.map((t) => <li key={t}>{t}</li>)}</ul>
         </div>
       </div>
 
-      <h3>Get the most out of it</h3>
+      <h3 className="reveal">Get the most out of it</h3>
       <div className="tip-grid">
-        {TIPS.map(([head, body]) => (
-          <div key={head} className="tip-card">
+        {TIPS.map(([head, body], i) => (
+          <div key={head} className="tip-card reveal" style={{ ["--i" as string]: i } as CSSProperties}>
             <b>{head}</b>
             <p>{body}</p>
           </div>
         ))}
       </div>
 
-      <h3>How it is calculated, in short</h3>
-      <div className="calc-grid">
+      <h3 className="reveal">How it is calculated, in short</h3>
+      <div className="calc-grid reveal">
         <div className="tip-card"><b>One unit</b><p>An <i>active cell-day</i> is one grid square (1, 2 or 5 km) on one UTC day with at least one detection from any satellite. Monthly value = how many such square-days there were.</p></div>
         <div className="tip-card"><b>Is a month unusual?</b><p>Compare it with the same month in other years on a log scale: z = (ln(1+x) − median) ÷ (1.4826 × MAD). Flag it when |z| passes a threshold tuned so ordinary months are falsely flagged about 1% of the time.</p></div>
         <div className="tip-card"><b>Fair across satellites</b><p>Every satellite is counted, but history is judged on the steady set (Terra, Aqua, Suomi-NPP), because NOAA-20 (2018) and NOAA-21 (2023) raise counts with no extra fire.</p></div>
@@ -184,8 +265,8 @@ export default function Landing({ onGo, onSearch }: Props) {
       </div>
       <p className="land-actions"><button type="button" className="tool" onClick={() => onGo("method")}>Open the full technical reference and the calculator →</button></p>
 
-      <h3>Where the detail is</h3>
-      <div className="table-wrap">
+      <h3 className="reveal">Where the detail is</h3>
+      <div className="table-wrap reveal">
         <table className="table">
           <thead><tr><th></th><th>Ghana</th><th>The other 15 West African countries</th></tr></thead>
           <tbody>

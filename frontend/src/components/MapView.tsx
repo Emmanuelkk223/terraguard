@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CircleMarker, GeoJSON, MapContainer, Popup, Rectangle, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
-import type { LatLng, LatLngBoundsExpression, PathOptions } from "leaflet";
+import { CircleMarker, GeoJSON, MapContainer, Marker, Popup, Rectangle, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
+import { divIcon, type LatLng, type LatLngBoundsExpression, type PathOptions } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { api } from "../services/api";
 import { rampColor, type RampName } from "../services/colors";
@@ -130,27 +130,55 @@ function DrawLayer({ active, onDone }: { active: boolean; onDone: (box: Box) => 
   return <Rectangle bounds={[[start.lat, start.lng], [current.lat, current.lng]]} interactive={false} pathOptions={boxStyle} />;
 }
 
-/** Moves the map to a place chosen in the search box (and marks it). */
+// A pulsing beacon for a located place (drawn with CSS: .beacon in styles.css).
+const beaconIcon = (covered: boolean) => divIcon({
+  className: `beacon${covered ? "" : " beacon-off"}`,
+  html: "<span></span><span></span><span></span><i></i>",
+  iconSize: [64, 64],
+  iconAnchor: [32, 32],
+});
+
+/** Moves the map to a place chosen in the search box or by TerraGuide, marks it with a pulsing beacon, and outlines a chosen area. */
 function FlyToPlace({ focus }: { focus: Focus | null }) {
   const map = useMap();
+  const [outline, setOutline] = useState<Focus | null>(null);
   useEffect(() => {
     if (!focus) return;
-    if (focus.box) {
-      map.flyToBounds([[focus.box[1], focus.box[0]], [focus.box[3], focus.box[2]]], { padding: [30, 30], duration: 1.1, maxZoom: 11 });
-    } else {
-      map.flyTo([focus.lat, focus.lon], 10, { duration: 1.1 });
-    }
+    map.stop();
+    // Wait for the map to know its size (it may have just appeared), then fly: out a little first, then in, so the move reads as a journey.
+    const go = window.setTimeout(() => {
+      map.invalidateSize();
+      if (focus.box) {
+        map.flyToBounds([[focus.box[1], focus.box[0]], [focus.box[3], focus.box[2]]], { padding: [40, 40], duration: 1.8, maxZoom: 11 });
+      } else {
+        map.flyTo([focus.lat, focus.lon], 10, { duration: 1.8 });
+      }
+    }, 120);
+    setOutline(focus.box && !focus.pin ? focus : null);
+    const fade = window.setTimeout(() => setOutline(null), 9000);
+    return () => { window.clearTimeout(go); window.clearTimeout(fade); };
   }, [focus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!focus?.pin) return null;
   return (
-    <CircleMarker
-      center={[focus.lat, focus.lon]}
-      radius={9}
-      interactive={false}
-      pathOptions={{ color: "#ffffff", weight: 3, fillColor: focus.covered ? "#f2b84b" : "#8a9db2", fillOpacity: 1 }}
-    >
-      <Tooltip permanent direction="top" offset={[0, -10]} className="place-pin">{focus.name}</Tooltip>
-    </CircleMarker>
+    <>
+      {outline?.box && (
+        <Rectangle
+          key={outline.nonce}
+          bounds={[[outline.box[1], outline.box[0]], [outline.box[3], outline.box[2]]]}
+          interactive={false}
+          pathOptions={{ color: "#f2b84b", weight: 3, dashArray: "10 8", fillColor: "#f2b84b", fillOpacity: 0.07, className: "locate-outline" }}
+        >
+          <Tooltip permanent direction="top" className="place-pin">{outline.name}</Tooltip>
+        </Rectangle>
+      )}
+      {focus?.pin && (
+        <>
+          <Marker key={focus.nonce} position={[focus.lat, focus.lon]} icon={beaconIcon(focus.covered)} interactive={false} keyboard={false} />
+          <CircleMarker center={[focus.lat, focus.lon]} radius={0.1} interactive={false} pathOptions={{ opacity: 0, fillOpacity: 0 }}>
+            <Tooltip permanent direction="top" offset={[0, -18]} className="place-pin">{focus.name}</Tooltip>
+          </CircleMarker>
+        </>
+      )}
+    </>
   );
 }
 

@@ -13,6 +13,7 @@ import DataPage from "./pages/DataPage";
 import MethodologyPage from "./pages/MethodologyPage";
 import PlaceBanner from "./components/PlaceBanner";
 import PlaceSearch from "./components/PlaceSearch";
+import TerraGuide, { type GuideAction } from "./components/TerraGuide";
 import { boxAround, boxToString, DEFAULT_RADIUS_KM, type Focus } from "./services/places";
 
 const TABS = [
@@ -69,6 +70,7 @@ export default function App() {
   const [place, setPlace] = useState<Place | null>(null); // a town chosen through search
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM);
   const [focus, setFocus] = useState<Focus | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
   const nonce = useRef(0);
 
   const q: AreaQuery = useMemo(() => ({ grid, region, bbox, sensor }), [grid, region, bbox, sensor]);
@@ -226,6 +228,30 @@ export default function App() {
     document.querySelector<HTMLInputElement>(".search-input")?.focus();
   };
 
+  // The latest complete month in the data (the current calendar month is still being filled).
+  const latestMonth = useMemo<Selection | null>(() => {
+    if (!rows.length) return null;
+    const now = new Date();
+    const thisMonth = now.getUTCFullYear() * 12 + now.getUTCMonth();
+    const done = rows.filter((r) => r.year * 12 + (r.month - 1) < thisMonth);
+    const last = done[done.length - 1] ?? rows[rows.length - 1];
+    return { year: last.year, month: last.month };
+  }, [rows]);
+
+  // TerraGuide's answers: set the area, view and month, then open the page.
+  const runGuide = (a: GuideAction) => {
+    if (a.place) choosePlace(a.place);
+    else if (a.area) {
+      setPlace(null);
+      setBbox(null);
+      chooseArea(a.area);
+    }
+    if (a.steady) setSensor("steady");
+    if (a.month) setSelection(a.month);
+    setTab(a.tab);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const openFromAnomaly = (s: Selection) => {
     setSelection(s);
     setTab("calendar");
@@ -308,7 +334,8 @@ export default function App() {
             <button type="button" className="tool" onClick={() => { retries.current = 0; setAttempt((n) => n + 1); }}>Retry</button>
           </p>
         )}
-        {tab === "start" && <Landing onGo={goTo} onSearch={focusSearch} />}
+        {tab === "start" && <Landing onGo={goTo} onSearch={focusSearch} onGuide={() => setGuideOpen(true)}
+          onCountry={(iso2) => runGuide({ tab: "calendar", area: AREA_BY_COUNTRY[iso2] ?? "Ghana" })} />}
         {ready && tab === "overview" && <Overview rows={rows} annual={annual} region={heading} q={q} onOpenCalendar={() => setTab("calendar")} />}
         {ready && tab === "calendar" && (
           <CalendarPage rows={rows} q={q} heading={heading} selection={selection} onSelect={setSelection} onBbox={setBboxManually} focus={focus} outsideGhana={outsideGhana} />
@@ -322,6 +349,8 @@ export default function App() {
         {ready && tab === "data" && <DataPage q={q} meta={meta} />}
         {tab === "method" && <MethodologyPage rows={rows} selection={selection} area={heading} />}
       </main>
+      <TerraGuide open={guideOpen} onOpenChange={setGuideOpen} groups={groups} currentArea={bbox ? (townArea ? place!.name : "Custom area") : region}
+        latest={latestMonth} onAction={runGuide} />
       <footer>
         Satellite detections are not unique fires and are not an emergency alert. Data: NASA FIRMS (MODIS and VIIRS), NASA POWER. Built with AI assistance (see README). Descriptions of unusual activity refer to history, not predictions.
       </footer>
