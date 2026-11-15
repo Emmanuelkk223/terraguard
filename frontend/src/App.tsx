@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "./services/api";
 import type {
-  AnnualRow, AreaQuery, CalRow, Grid, HarmonizationMeta, Place, SeasonalRow, Selection, Sensor, Validation,
+  AnnualRow, AreaGroup, AreaQuery, CalRow, Grid, HarmonizationMeta, Place, SeasonalRow, Selection, Sensor, Validation,
 } from "./types";
 import Overview from "./pages/Overview";
 import CalendarPage from "./pages/CalendarPage";
@@ -25,8 +25,21 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
+// ISO 3166 alpha-2 (as used by the place gazetteer) to the area names the API serves.
+const AREA_BY_COUNTRY: Record<string, string> = {
+  GH: "Ghana", CI: "Côte d'Ivoire", TG: "Togo", BF: "Burkina Faso", BJ: "Benin", CV: "Cabo Verde", GM: "Gambia", GN: "Guinea",
+  GW: "Guinea-Bissau", LR: "Liberia", ML: "Mali", MR: "Mauritania", NE: "Niger", NG: "Nigeria", SN: "Senegal", SL: "Sierra Leone",
+};
+const GHANA_BOX = [-3.26, 4.74, 1.2, 11.17]; // west, south, east, north: the area with the full-detail Ghana dataset
+
+const insideGhana = (bbox: string): boolean => {
+  const [w, s, e, n] = bbox.split(",").map(Number);
+  return w >= GHANA_BOX[0] && s >= GHANA_BOX[1] && e <= GHANA_BOX[2] && n <= GHANA_BOX[3];
+};
+
 const SENSOR_LABEL: Record<Sensor, string> = {
-  harmonized: "Both sensors (harmonized)",
+  harmonized: "All satellites (harmonized)",
+  steady: "Steady set: Terra, Aqua, Suomi-NPP (for comparing years)",
   modis: "MODIS only",
   viirs: "VIIRS only",
 };
@@ -38,6 +51,7 @@ export default function App() {
   const [bbox, setBbox] = useState<string | null>(null);
   const [sensor, setSensor] = useState<Sensor>("harmonized");
   const [regions, setRegions] = useState<string[]>(["Ghana"]);
+  const [groups, setGroups] = useState<AreaGroup[] | null>(null); // Ghana first, then West Africa; null until loaded
   const [rows, setRows] = useState<CalRow[]>([]);
   const [rowsBoth, setRowsBoth] = useState<CalRow[]>([]);
   const [anomalies, setAnomalies] = useState<CalRow[]>([]);
@@ -56,8 +70,14 @@ export default function App() {
   const nonce = useRef(0);
 
   const q: AreaQuery = useMemo(() => ({ grid, region, bbox, sensor }), [grid, region, bbox, sensor]);
+  const ghanaAreas = useMemo(
+    () => new Set(groups ? groups.filter((g) => g.label.startsWith("Ghana")).flatMap((g) => g.areas.map((a) => a.name)) : regions),
+    [groups, regions],
+  );
+  // Ghana has the full detail (1, 2 and 5 km, 16 regions); everywhere else is country level on a 5 km grid.
+  const outsideGhana = groups !== null && (bbox ? !insideGhana(bbox) : !ghanaAreas.has(region));
   const areaName = bbox ? "Custom area" : region; // used for logic: rainfall and model comparison exist for named areas only
-  const townArea = bbox && place && place.covered && place.kind !== "country" && place.kind !== "region";
+  const townArea = bbox && place && place.covered && place.kind !== "country" && (place.kind !== "region" || place.country_code !== "GH");
   const areaTitle = townArea ? `${place!.name} (${radiusKm} km)` : areaName; // used for display
   const heading = sensor === "harmonized" ? areaTitle : `${areaTitle} · ${SENSOR_LABEL[sensor]}`;
 
@@ -78,18 +98,24 @@ export default function App() {
       setPlace(null);
       if (p.covered) {
         setBbox(null);
-        setRegion("Ghana");
+        setRegion(AREA_BY_COUNTRY[p.country_code] ?? "Ghana");
       } else {
         setPlace(p); // explains that there is no data for this country yet
         setBbox(null);
         setRegion("Ghana"); // the analysis stays on the data we have; only the map moves
       }
       flyTo({ lat: p.lat, lon: p.lon, name: p.name, covered: p.covered, box: p.bbox, pin: false });
-    } else if (p.kind === "region") {
+    } else if (p.kind === "region" && p.country_code === "GH") {
       setPlace(null);
       setBbox(null);
       setRegion(p.region ?? p.name.replace(/ Region$/, ""));
       flyTo({ lat: p.lat, lon: p.lon, name: p.name, covered: true, box: p.bbox, pin: false });
+    } else if (p.kind === "region" && p.covered) {
+      // A region outside Ghana has no separate data: analyse the box around it, on the country-level dataset.
+      const box = p.bbox ?? boxAround(p.lat, p.lon, 50);
+      setPlace({ ...p, kind: "place" });
+      setBbox(boxToString(box));
+      flyTo({ lat: p.lat, lon: p.lon, name: p.name, covered: true, box, pin: false });
     } else if (p.covered) {
       const box = boxAround(p.lat, p.lon, radiusKm);
       setPlace(p);
@@ -127,6 +153,24 @@ export default function App() {
   useEffect(() => {
     api.regions(grid).then((r) => setRegions(r.regions)).catch(() => undefined);
   }, [grid]);
+
+  useEffect(() => {
+    api.areas().then((a) => setGroups(a.groups)).catch(() => setGroups(null));
+  }, []);
+
+  // Outside Ghana only the 5 km grid exists.
+  useEffect(() => {
+    if (outsideGhana && grid !== "5km") setGrid("5km");
+  }, [outsideGhana, grid]);
+
+  const chooseArea = (name: string) => {
+    setRegion(name);
+    const area = groups?.flatMap((g) => g.areas).find((a) => a.name === name);
+    if (area?.bbox) {
+      const [w, s, e, n] = area.bbox;
+      flyTo({ lat: (s + n) / 2, lon: (w + e) / 2, name, covered: true, box: [w, s, e, n], pin: false });
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -183,7 +227,7 @@ export default function App() {
           <span className="logo" aria-hidden="true">TG</span>
           <div>
             <h1>TerraGuard</h1>
-            <p>Turning satellite fire observations into actionable environmental intelligence</p>
+            <p>Satellite fire history for Ghana first, and all of West Africa</p>
           </div>
         </div>
         <PlaceSearch onSelect={choosePlace} />
@@ -196,8 +240,14 @@ export default function App() {
                 <button type="button" className="chip-x" onClick={() => { setPlace(null); setBbox(null); }} aria-label="Clear the chosen area">✕</button>
               </span>
             ) : (
-              <select value={region} onChange={(e) => setRegion(e.target.value)}>
-                {regions.map((r) => <option key={r}>{r}</option>)}
+              <select value={region} onChange={(e) => chooseArea(e.target.value)}>
+                {groups
+                  ? groups.map((g) => (
+                      <optgroup key={g.label} label={g.label}>
+                        {g.areas.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+                      </optgroup>
+                    ))
+                  : regions.map((r) => <option key={r}>{r}</option>)}
               </select>
             )}
           </label>
@@ -210,8 +260,8 @@ export default function App() {
           <label>
             Grid
             <select value={grid} onChange={(e) => setGrid(e.target.value as Grid)}>
-              <option value="1km">1 km</option>
-              <option value="2km">2 km</option>
+              <option value="1km" disabled={outsideGhana}>1 km{outsideGhana ? " (Ghana only)" : ""}</option>
+              <option value="2km" disabled={outsideGhana}>2 km{outsideGhana ? " (Ghana only)" : ""}</option>
               <option value="5km">5 km</option>
             </select>
           </label>
@@ -231,6 +281,12 @@ export default function App() {
           onClear={clearPlace}
         />
       )}
+      {outsideGhana && (
+        <p className="notice scope-note" role="note">
+          <b>{bbox ? "Custom area outside Ghana" : region}:</b> country-level data on a 5 km grid. Ghana has the full detail (1, 2 and 5 km grids,
+          16 regions, rainfall context and the sensor checks). <button type="button" className="tool" onClick={() => { setPlace(null); setBbox(null); setRegion("Ghana"); flyTo({ lat: 7.95, lon: -1.0, name: "Ghana", covered: true, box: [-3.3, 4.7, 1.3, 11.2], pin: false }); }}>Back to Ghana</button>
+        </p>
+      )}
       <main>
         {loading && (rows.length ? <span className="updating" role="status">Updating…</span> : <p className="muted">Loading…</p>)}
         {error && (
@@ -239,18 +295,21 @@ export default function App() {
             <button type="button" className="tool" onClick={() => { retries.current = 0; setAttempt((n) => n + 1); }}>Retry</button>
           </p>
         )}
-        {ready && tab === "overview" && <Overview rows={rows} annual={annual} region={heading} onOpenCalendar={() => setTab("calendar")} />}
+        {ready && tab === "overview" && <Overview rows={rows} annual={annual} region={heading} q={q} onOpenCalendar={() => setTab("calendar")} />}
         {ready && tab === "calendar" && (
-          <CalendarPage rows={rows} q={q} heading={heading} selection={selection} onSelect={setSelection} onBbox={setBboxManually} focus={focus} />
+          <CalendarPage rows={rows} q={q} heading={heading} selection={selection} onSelect={setSelection} onBbox={setBboxManually} focus={focus} outsideGhana={outsideGhana} />
         )}
         {ready && tab === "historical" && <HistoricalPage annual={annual} seasonal={seasonal} rows={rows} grid={grid} region={heading} area={areaName} />}
+        {ready && outsideGhana && (tab === "sensors" || tab === "data") && (
+          <p className="notice">The sensor-agreement statistics, orbit drift, sensitivity analysis and data-quality tables on this page were produced for Ghana.</p>
+        )}
         {ready && tab === "sensors" && <SensorsPage rows={rowsBoth} meta={meta} validation={validation} grid={grid} region={areaName} />}
         {ready && tab === "anomalies" && <AnomaliesPage rows={anomalies} region={heading} area={bbox ? "Custom area" : region} onOpen={openFromAnomaly} />}
         {ready && tab === "data" && <DataPage q={q} meta={meta} />}
         {tab === "method" && <MethodologyPage />}
       </main>
       <footer>
-        Satellite detections are not unique fires and are not an emergency alert. Data: NASA FIRMS. Descriptions of unusual activity refer to history, not predictions.
+        Satellite detections are not unique fires and are not an emergency alert. Data: NASA FIRMS (MODIS and VIIRS), NASA POWER. Built with AI assistance (see README). Descriptions of unusual activity refer to history, not predictions.
       </footer>
     </div>
   );

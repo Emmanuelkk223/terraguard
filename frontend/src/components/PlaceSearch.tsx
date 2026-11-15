@@ -8,6 +8,20 @@ interface Props {
 }
 
 const DEBOUNCE_MS = 180;
+const COORDINATES = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
+
+/** "7.95, -1.02" (latitude, longitude in degrees) as a place; null when the text is not a coordinate pair. */
+export function parseCoordinates(text: string): Place | null {
+  const m = COORDINATES.exec(text);
+  if (!m) return null;
+  const lat = Number(m[1]), lon = Number(m[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const inside = lat >= 4 && lat <= 27.7 && lon >= -25.7 && lon <= 16.3; // the West Africa download area
+  return {
+    id: -1, name: `${lat.toFixed(3)}, ${lon.toFixed(3)}`, kind: "place", admin1: null, country: "Latitude and longitude",
+    country_code: "", lat, lon, covered: inside, region: null,
+  };
+}
 
 /** Type-ahead search for a town, city, region or country across West Africa. */
 export default function PlaceSearch({ onSelect }: Props) {
@@ -22,9 +36,10 @@ export default function PlaceSearch({ onSelect }: Props) {
   const listId = useId();
   const box = useRef<HTMLDivElement>(null);
   const trimmed = query.trim();
+  const typedCoordinates = parseCoordinates(trimmed);
 
   useEffect(() => {
-    if (trimmed.length < 2) {
+    if (trimmed.length < 2 || typedCoordinates) {
       setResults([]);
       setError(null);
       return;
@@ -64,24 +79,25 @@ export default function PlaceSearch({ onSelect }: Props) {
     setOpen(false);
   }, [onSelect]);
 
-  const fresh = resultsFor === trimmed; // results shown belong to what is typed now
+  const fresh = typedCoordinates ? true : resultsFor === trimmed; // results shown belong to what is typed now
+  const items: Place[] = typedCoordinates ? [typedCoordinates] : results;
 
   // Enter pressed while the new results were still loading: pick the best match as soon as they arrive.
   useEffect(() => {
-    if (enterWhenReady.current && fresh && results[0]) choose(results[0]);
-  }, [fresh, results, choose]);
+    if (enterWhenReady.current && fresh && items[0]) choose(items[0]);
+  }, [fresh, results, choose]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setOpen(true);
-      setActive((i) => Math.min(i + 1, results.length - 1));
+      setActive((i) => Math.min(i + 1, items.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActive((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter" && trimmed.length >= 2) {
       e.preventDefault();
-      if (fresh && results[active]) choose(results[active]);
+      if (fresh && items[active]) choose(items[active]);
       else enterWhenReady.current = true; // never pick a suggestion that belongs to an earlier query
     } else if (e.key === "Escape") {
       setOpen(false);
@@ -96,21 +112,21 @@ export default function PlaceSearch({ onSelect }: Props) {
         id={`${listId}-input`}
         type="search"
         className="search-input"
-        placeholder="Search a town, city or country, e.g. Kumasi"
+        placeholder="Town, city, country, or latitude, longitude"
         autoComplete="off"
         value={query}
         role="combobox"
         aria-expanded={showList}
         aria-controls={listId}
         aria-autocomplete="list"
-        aria-activedescendant={showList && results[active] ? `${listId}-${active}` : undefined}
+        aria-activedescendant={showList && items[active] ? `${listId}-${active}` : undefined}
         onChange={(e) => { enterWhenReady.current = false; setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
       />
       {showList && (
         <ul id={listId} className={`search-list ${fresh ? "" : "stale"}`} role="listbox" aria-label="Matching places" aria-busy={!fresh}>
-          {results.map((p, i) => (
+          {items.map((p, i) => (
             <li
               key={p.id}
               id={`${listId}-${i}`}
@@ -130,12 +146,12 @@ export default function PlaceSearch({ onSelect }: Props) {
               </span>
             </li>
           ))}
-          {!results.length && fresh && !loading && !error && (
+          {!items.length && fresh && !loading && !error && (
             <li className="search-empty">No places match “{trimmed}”. Try the nearest larger town, or a region or country name.</li>
           )}
           {error && <li className="search-empty">Search is unavailable right now ({error}).</li>}
-          {loading && !results.length && <li className="search-empty">Searching…</li>}
-          <li className="search-foot">Searches West Africa. Fire data currently covers Ghana only.</li>
+          {loading && !items.length && <li className="search-empty">Searching…</li>}
+          <li className="search-foot">Searches West Africa. Ghana has the full detail; the other fifteen countries are covered at country level. You can also type latitude, longitude (for example 6.69, -1.62).</li>
         </ul>
       )}
     </div>

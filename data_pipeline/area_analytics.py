@@ -21,10 +21,11 @@ from .harmonize import (
     KM_PER_DEG_LAT, KM_PER_DEG_LON_EQUATOR, REFERENCE_LATITUDE, fill_missing_months, monthly_summary,
 )
 
-VIEW_COLUMN = {"harmonized": "active_cell_days", "modis": "modis_cell_days", "viirs": "viirs_cell_days"}
+VIEW_COLUMN = {"harmonized": "active_cell_days", "steady": "steady_cell_days", "modis": "modis_cell_days", "viirs": "viirs_cell_days"}
 CUSTOM_LABEL = "Custom area"
 COVERAGE_COLUMNS = ["modis_days_with_records", "viirs_days_with_records", "days_in_month",
-                    "modis_archive_ok", "viirs_archive_ok", "coverage_ok"]
+                    "modis_archive_ok", "viirs_archive_ok", "coverage_ok", "overlap_ok",
+                    "viirs_expected", "modis_terra_only"]
 MAX_DAILY_DAYS = 1100
 
 
@@ -51,7 +52,7 @@ def cell_centre_coordinates(frame: pd.DataFrame, cell_size_km: float) -> tuple[n
 
 def select_cells(
     cell_days: pd.DataFrame, cell_size_km: float, *, region: str | None = None,
-    bbox: tuple[float, float, float, float] | None = None,
+    bbox: tuple[float, float, float, float] | None = None, national: str = "Ghana",
 ) -> pd.DataFrame:
     """Rows inside a region (by label) or a bounding box (by cell centre)."""
     frame = cell_days
@@ -59,7 +60,7 @@ def select_cells(
         west, south, east, north = bbox
         lon, lat = cell_centre_coordinates(frame, cell_size_km)
         frame = frame[(lon >= west) & (lon <= east) & (lat >= south) & (lat <= north)]
-    elif region and region != "Ghana":
+    elif region and region != national:
         frame = frame[frame["region"] == region]
     return frame
 
@@ -68,14 +69,15 @@ def _zero_monthly(months: pd.Series) -> pd.DataFrame:
     zero = pd.DataFrame({"month": pd.Series(months).drop_duplicates().sort_values()})
     for column in ("active_cell_days", "both_cell_days", "modis_only_cell_days", "viirs_only_cell_days",
                    "modis_detections", "viirs_detections", "modis_days_with_records",
-                   "viirs_days_with_records", "modis_cell_days", "viirs_cell_days"):
+                   "viirs_days_with_records", "modis_cell_days", "viirs_cell_days", "steady_cell_days", "viirs_steady_detections",
+                   "viirs_steady_cell_days"):
         zero[column] = 0
     return zero
 
 
 def area_monthly(
     cell_days: pd.DataFrame, cell_size_km: float, national_monthly: pd.DataFrame, *,
-    region: str | None = None, bbox: tuple[float, float, float, float] | None = None,
+    region: str | None = None, bbox: tuple[float, float, float, float] | None = None, national_name: str = "Ghana",
 ) -> pd.DataFrame:
     """Monthly table for a region or bounding box, aligned to the national months.
 
@@ -83,8 +85,8 @@ def area_monthly(
     supplies the month list and the archive-coverage flags (coverage is a property
     of the data archive, not of the area).
     """
-    national = national_monthly[national_monthly["region"] == "Ghana"]
-    selected = select_cells(cell_days, cell_size_km, region=region, bbox=bbox)
+    national = national_monthly[national_monthly["region"] == national_name]
+    selected = select_cells(cell_days, cell_size_km, region=region, bbox=bbox, national=national_name)
     if selected.empty:
         monthly = _zero_monthly(national["month"])
     else:
@@ -95,7 +97,7 @@ def area_monthly(
         if column in coverage:
             monthly[column] = monthly["month"].map(coverage[column])
     monthly["month"] = pd.to_datetime(monthly["month"])
-    monthly.insert(0, "region", CUSTOM_LABEL if bbox is not None else (region or "Ghana"))
+    monthly.insert(0, "region", CUSTOM_LABEL if bbox is not None else (region or national_name))
     return monthly
 
 
@@ -115,9 +117,10 @@ def apply_view(monthly: pd.DataFrame, view: str) -> pd.DataFrame:
 def area_calendar(
     cell_days: pd.DataFrame, cell_size_km: float, national_monthly: pd.DataFrame, *,
     view: str = "harmonized", region: str | None = None,
-    bbox: tuple[float, float, float, float] | None = None, min_samples: int = 5,
+    bbox: tuple[float, float, float, float] | None = None, min_samples: int = 5, national_name: str = "Ghana",
 ) -> pd.DataFrame:
-    monthly = apply_view(area_monthly(cell_days, cell_size_km, national_monthly, region=region, bbox=bbox), view)
+    monthly = apply_view(area_monthly(cell_days, cell_size_km, national_monthly, region=region, bbox=bbox,
+                                      national_name=national_name), view)
     monthly["month"] = monthly["month"].dt.strftime("%Y-%m-%d")
     calendar = build_calendar(monthly, min_samples=min_samples)
     calendar["view"] = view
@@ -136,8 +139,10 @@ def activity_series(
     if interval == "day" and len(days) > MAX_DAILY_DAYS:
         raise ValueError(f"daily series is limited to {MAX_DAILY_DAYS} days; use weekly for longer ranges")
     frame = selected[(selected["date"] >= start) & (selected["date"] <= end)]
+    viirs_steady = frame["viirs_steady_detections"] if "viirs_steady_detections" in frame else frame["viirs_detections"]
     flags = pd.DataFrame({
         "date": frame["date"], "harmonized_cell_days": 1,
+        "steady_cell_days": ((frame["modis_detections"] > 0) | (viirs_steady > 0)).astype(int),
         "modis_cell_days": (frame["modis_detections"] > 0).astype(int),
         "viirs_cell_days": (frame["viirs_detections"] > 0).astype(int),
         "both_cell_days": (frame["occupied_by"] == "both").astype(int),

@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from . import atomic
+from .bridge import bridge_monthly
 from .calibration import MAD_SCALE, TARGET_FALSE_FLAG_RATE, threshold_for
 
 DEFAULT_THRESHOLD = None  # None = calibrated to the baseline size; a number forces a fixed threshold
@@ -47,20 +48,38 @@ def _status(value: float, median: float, mad: float, n: int, score: float,
     return "typical", True
 
 
+def _estimate_note(row: dict) -> str:
+    if row.get("series_basis") != "modis_scaled":
+        return ""
+    return (f" Estimated: VIIRS did not exist yet, so this month is MODIS expressed on the combined scale "
+            f"(90% range {row['estimate_low']:,.0f} to {row['estimate_high']:,.0f}); MODIS alone saw {row['observed_cell_days']:,.0f}.")
+
+
 def _explain(row: dict) -> str:
+    return _explain_core(row) + _estimate_note(row)
+
+
+def _explain_core(row: dict) -> str:
     month = calendar.month_name[int(row["month"])]
     where = row["region"] if row["region"] != "Ghana" else "all of Ghana"
     status = row["status"]
+    if status == "incomplete_coverage" and row.get("limited_reason") == "terra_only":
+        return (f"{month} {int(row['year'])} predates the full MODIS constellation: only Terra was observing "
+                "(Aqua began delivering fire data in mid-2002), so this month is not compared with history.")
     if status == "incomplete_coverage":
         return (f"{month} {int(row['year'])} in {where} lacks sufficient satellite record coverage "
                 "for one or both sensors, so it is not compared with history.")
     if status == "insufficient_baseline":
         return (f"Only {int(row['baseline_n'])} other complete years exist for {month} in {where}; "
                 "too few for a reliable historical comparison.")
-    base = (f"{row[VALUE]:,.0f} active cell-days in {month} {int(row['year'])} ({where}) vs a "
+    shown = row.get("scored_cell_days", row[VALUE])
+    base = (f"{shown:,.0f} active cell-days in {month} {int(row['year'])} ({where}) vs a "
             f"historical median of {row['baseline_median']:,.0f} for {month} across "
             f"{int(row['baseline_n'])} other years (MAD {row['baseline_mad']:,.1f}); "
             f"{row['pct_diff']:+.0f}% ({row['abs_diff']:+,.0f}).")
+    if row.get("scored_cell_days", row[VALUE]) != row[VALUE]:
+        base += (f" This comparison uses the steady set of satellites (Terra, Aqua, Suomi-NPP) so that NOAA-20 and NOAA-21, which joined in 2018 and 2023, "
+                 f"cannot create a false alarm; counting all satellites there were {row[VALUE]:,.0f}.")
     if status in ("above_flat_baseline", "below_flat_baseline"):
         return base + " Past years showed no variation, so a score cannot be computed."
     if status in ("unusually_high", "unusually_low"):
@@ -77,7 +96,24 @@ def build_calendar(
     monthly: pd.DataFrame, *, min_samples: int = 5, threshold: float | None = DEFAULT_THRESHOLD
 ) -> pd.DataFrame:
     """Return one row per region-month with baseline, difference and status."""
-    frame = monthly.copy()
+    # Only the combined series is bridged; a single-sensor view is already homogeneous.
+    if "view" in monthly and not monthly["view"].isin(["harmonized", "steady"]).all():
+        frame = monthly.copy()
+        frame["observed_cell_days"] = frame["active_cell_days"]
+        frame["series_basis"] = "single_sensor"
+        frame["estimate_low"] = frame["estimate_high"] = frame["active_cell_days"].astype(float)
+    else:
+        frame = bridge_monthly(monthly)
+    # Flags compare like with like. With all satellites counted, NOAA-20 (2018) and NOAA-21 (2023) raise counts for reasons that
+    # have nothing to do with fire, so the history comparison is made on the steady set (Terra, Aqua, Suomi-NPP). The counts
+    # shown still include every satellite.
+    views = set(monthly["view"].unique()) if "view" in monthly else {"harmonized"}
+    if "steady_cell_days" in frame.columns and views <= {"harmonized", "steady"}:
+        score_column = "steady_cell_days"
+    elif views == {"viirs"} and "viirs_steady_cell_days" in frame.columns:
+        score_column = "viirs_steady_cell_days"  # VIIRS alone: Suomi-NPP is the one VIIRS satellite present for the whole record
+    else:
+        score_column = VALUE
     frame["month_start"] = pd.to_datetime(frame["month"])
     frame["year"] = frame["month_start"].dt.year
     frame["month"] = frame["month_start"].dt.month
@@ -86,11 +122,13 @@ def build_calendar(
     for (_, _), group in frame.groupby(["region", "month"], sort=True):
         valid = group[group["coverage_ok"]]
         for _, row in group.sort_values("year").iterrows():
-            peers = valid.loc[valid["year"] != row["year"], VALUE].to_numpy(float)
+            others = valid[valid["year"] != row["year"]]
+            peers = others[score_column].to_numpy(float)
+            peers_basis = others["series_basis"].to_numpy()
             n = len(peers)
             median = float(np.median(peers)) if n else np.nan
             mad = float(np.median(np.abs(peers - median))) if n else np.nan
-            value = float(row[VALUE])
+            value = float(row[score_column])
             # Score on the log scale; median/MAD above stay in cell-days for display.
             log_peers = np.log1p(peers)
             log_median = float(np.median(log_peers)) if n else np.nan
@@ -110,12 +148,21 @@ def build_calendar(
                 "region": row["region"], "year": int(row["year"]), "month": int(row["month"]),
                 "month_start": row["month_start"].date().isoformat(),
                 VALUE: int(row[VALUE]),
+                "scored_cell_days": int(row[score_column]),
                 "modis_cell_days": int(row["modis_cell_days"]),
                 "viirs_cell_days": int(row["viirs_cell_days"]),
                 "both_cell_days": int(row["both_cell_days"]),
                 "modis_detections": int(row["modis_detections"]),
                 "viirs_detections": int(row["viirs_detections"]),
+                "viirs_steady_cell_days": int(row["viirs_steady_cell_days"]) if "viirs_steady_cell_days" in row.index and pd.notna(row["viirs_steady_cell_days"]) else int(row["viirs_cell_days"]),
+                "viirs_steady_detections": int(row["viirs_steady_detections"]) if "viirs_steady_detections" in row.index and pd.notna(row["viirs_steady_detections"]) else int(row["viirs_detections"]),
+                "steady_cell_days": int(row["steady_cell_days"]) if "steady_cell_days" in row.index and pd.notna(row["steady_cell_days"]) else int(row["active_cell_days"]),
                 "coverage_ok": bool(row["coverage_ok"]),
+                "series_basis": row["series_basis"], "estimated": bool(row["series_basis"] == "modis_scaled"),
+                "observed_cell_days": int(row["observed_cell_days"]),
+                "estimate_low": float(row["estimate_low"]), "estimate_high": float(row["estimate_high"]),
+                "limited_reason": "terra_only" if bool(row.get("modis_terra_only", False)) else "",
+                "baseline_estimated_n": int((peers_basis == "modis_scaled").sum()) if n else 0,
                 "baseline_n": n, "baseline_median": median, "baseline_mad": mad,
                 "abs_diff": abs_diff, "pct_diff": pct, "robust_score": score,
                 "threshold": limit, "status": status, "reliable": reliable,
@@ -130,6 +177,7 @@ def annual_summary(cal: pd.DataFrame) -> pd.DataFrame:
     grouped = cal.groupby(["region", "year"])
     annual = grouped.agg(
         **{VALUE: (VALUE, "sum"), "months_with_coverage": ("coverage_ok", "sum"),
+           "estimated_months": ("estimated", "sum"),
            "modis_cell_days": ("modis_cell_days", "sum"), "viirs_cell_days": ("viirs_cell_days", "sum")}
     ).reset_index()
     annual["complete_year"] = annual["months_with_coverage"] == 12
@@ -139,13 +187,14 @@ def annual_summary(cal: pd.DataFrame) -> pd.DataFrame:
 def seasonal_summary(cal: pd.DataFrame) -> pd.DataFrame:
     """Per region and calendar month: statistics over complete-coverage years."""
     valid = cal[cal["coverage_ok"]]
+    basis = "scored_cell_days" if "scored_cell_days" in valid else VALUE  # the like-for-like series, so no satellite step distorts the season
     rows = []
     for (region, month), g in valid.groupby(["region", "month"]):
         rows.append({
             "region": region, "month": month, "n_years": len(g),
-            "median": float(g[VALUE].median()), "mean": float(g[VALUE].mean()),
-            "min": int(g[VALUE].min()), "min_year": int(g.loc[g[VALUE].idxmin(), "year"]),
-            "max": int(g[VALUE].max()), "max_year": int(g.loc[g[VALUE].idxmax(), "year"]),
+            "median": float(g[basis].median()), "mean": float(g[basis].mean()),
+            "min": int(g[basis].min()), "min_year": int(g.loc[g[basis].idxmin(), "year"]),
+            "max": int(g[basis].max()), "max_year": int(g.loc[g[basis].idxmax(), "year"]),
         })
     return pd.DataFrame(rows)
 

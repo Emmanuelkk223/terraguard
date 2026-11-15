@@ -95,14 +95,14 @@ def test_country_suffix_restricts_the_search(search: Gazetteer) -> None:
 def test_typing_a_country_name_finds_the_country_first(search: Gazetteer) -> None:
     top = search.search("ghana")[0]
     assert top["kind"] == "country" and top["bbox"][0] < top["bbox"][2] and top["covered"] is True
-    assert search.search("nigeria")[0]["kind"] == "country" and search.search("nigeria")[0]["covered"] is False
+    assert search.search("nigeria")[0]["kind"] == "country" and search.search("nigeria")[0]["covered"] is True  # all sixteen countries are covered
 
 
 def test_regions_and_coverage_flags(search: Gazetteer) -> None:
     region = [r for r in search.search("ashanti") if r["kind"] == "region"]
     assert region and region[0]["region"] == "Ashanti" and region[0]["bbox"]
     lagos = search.search("lagos")[0]
-    assert lagos["covered"] is False and "GH" in COVERED_COUNTRIES and "NG" not in COVERED_COUNTRIES
+    assert lagos["covered"] is True and "GH" in COVERED_COUNTRIES and "NG" in COVERED_COUNTRIES and len(COVERED_COUNTRIES) == 16
 
 
 def test_short_empty_and_nonsense_queries_are_harmless(search: Gazetteer) -> None:
@@ -136,12 +136,24 @@ def test_search_api_returns_ranked_places_with_coverage(tmp_path: Path, search: 
     (tmp_path / "data" / "reference").mkdir(parents=True)
     search.table.to_parquet(tmp_path / "data" / "reference" / "west_africa_places.parquet", index=False)
     body = client.get("/api/places/search", params={"q": "Kumasi, Ghana", "limit": 3}).json()
-    assert body["covered_countries"] == ["GH"] and body["data"][0]["name"] == "Kumasi" and body["data"][0]["covered"] is True
+    assert "GH" in body["covered_countries"] and len(body["covered_countries"]) == 16 and body["data"][0]["name"] == "Kumasi" and body["data"][0]["covered"] is True
     assert len(body["data"]) <= 3
     lagos = client.get("/api/places/search", params={"q": "lagos"}).json()["data"][0]
-    assert lagos["country_code"] == "NG" and lagos["covered"] is False
+    assert lagos["country_code"] == "NG" and lagos["covered"] is True
     assert client.get("/api/places/search", params={"q": "x"}).json()["data"] == []  # too short
     assert client.get("/api/places/search", params={"q": "a" * 81}).status_code == 422
     assert client.get("/api/places/search", params={"q": "ab", "limit": 99}).status_code == 422
     coverage = client.get("/api/places/coverage").json()
-    assert coverage["covered_countries"] == ["GH"] and "Ghana" in coverage["searchable_countries"] and coverage["places"] > 0
+    assert "GH" in coverage["covered_countries"] and len(coverage["covered_countries"]) == 16 and "Ghana" in coverage["searchable_countries"] and coverage["places"] > 0
+
+
+def test_ghana_wins_an_otherwise_equal_match() -> None:
+    from data_pipeline.places import Gazetteer
+    rows = [
+        {"id": 1, "name": "Bonuso", "norm": "bonuso", "alt_norm": "", "kind": "town", "admin1": "A", "country": "Togo", "country_code": "TG",
+         "lat": 8.0, "lon": 1.0, "population": 0, "seat_rank": 0, "region": None},
+        {"id": 2, "name": "Bonuso", "norm": "bonuso", "alt_norm": "", "kind": "town", "admin1": "B", "country": "Ghana", "country_code": "GH",
+         "lat": 7.0, "lon": -1.0, "population": 0, "seat_rank": 0, "region": "Ashanti"},
+    ]
+    results = Gazetteer(pd.DataFrame(rows)).search("bonuso")
+    assert [r["country_code"] for r in results] == ["GH", "TG"]

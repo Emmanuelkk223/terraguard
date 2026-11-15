@@ -23,7 +23,24 @@ export interface Place {
   bbox?: [number, number, number, number]; // countries and regions
 }
 
-export type Sensor = "harmonized" | "modis" | "viirs";
+export type Sensor = "harmonized" | "steady" | "modis" | "viirs";
+
+export interface AreaOption {
+  name: string;
+  grids: string[];
+  bbox?: [number, number, number, number] | null;
+}
+
+export interface AreaGroup {
+  label: string;
+  areas: AreaOption[];
+}
+
+export interface AreaList {
+  default: string;
+  west_africa_available: boolean;
+  groups: AreaGroup[];
+}
 
 /** Which data the whole app is looking at: grid, named region or custom box, and sensor view. */
 export interface AreaQuery {
@@ -85,6 +102,9 @@ export interface CalRow {
   modis_detections: number;
   viirs_detections: number;
   coverage_ok: boolean;
+  steady_cell_days?: number;
+  scored_cell_days?: number;
+  viirs_steady_detections?: number;
   baseline_n: number;
   baseline_median: number | null;
   baseline_mad: number | null;
@@ -96,6 +116,14 @@ export interface CalRow {
   reliable: boolean;
   explanation: string;
   view?: Sensor;
+  /** True when VIIRS did not exist yet and the value is MODIS expressed on the combined scale. */
+  estimated?: boolean;
+  series_basis?: "combined" | "modis_scaled" | "single_sensor";
+  observed_cell_days?: number;
+  estimate_low?: number;
+  estimate_high?: number;
+  limited_reason?: "" | "terra_only";
+  baseline_estimated_n?: number;
   modis_status?: Status | null;
   viirs_status?: Status | null;
 }
@@ -246,4 +274,52 @@ export interface MethodComparison {
     };
   };
   notes: string[];
+}
+
+export interface HotspotPreview {
+  rows: number;
+  limit: number;
+  too_large: boolean;
+  by_sensor: Record<string, number>;
+}
+
+export interface CurrentWindow {
+  year: number;
+  value: number;
+  estimated: boolean;
+  window_start: string;
+  window_end: string;
+}
+
+export interface CurrentComparison {
+  as_of: string;
+  window_days: number;
+  mode?: "days" | "month";
+  window_label?: string | null;
+  area: string;
+  sensor: Sensor;
+  grid: string;
+  current: CurrentWindow;
+  history: CurrentWindow[];
+  median: number;
+  pct_diff_from_median: number | null;
+  rank_among_years: number;
+  years_compared: number;
+  percentile: number;
+  note: string;
+}
+
+export interface BridgeBacktest {
+  fit_years: string;
+  test_years: string;
+  test_months: number;
+  median_absolute_error_pct: number;
+  median_bias_pct: number;
+  mean_absolute_log_error: number;
+  range_90_coverage: number;
+}
+
+export interface BridgeValidation {
+  method: string;
+  backtests: BridgeBacktest[];
 }

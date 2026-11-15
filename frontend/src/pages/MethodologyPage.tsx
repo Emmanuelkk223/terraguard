@@ -14,6 +14,7 @@ export default function MethodologyPage() {
       <p>
         The sensors differ in resolution, sensitivity, overpass times, viewing geometry, detection algorithms and confidence scales.
         In our data VIIRS reports several times more detections than MODIS for the same place and week, largely because its pixels are smaller.
+        The same issue arises inside VIIRS: adding NOAA-20 raised Ghana's yearly active cell-days by about 46% from 2019, and adding NOAA-21 by about 67 to 78% from 2023 (measured on our data), with no change in fire.
       </p>
 
       <h3>How TerraGuard harmonizes them (method A-0.1)</h3>
@@ -21,9 +22,30 @@ export default function MethodologyPage() {
         <li>Keep original FIRMS fields and sensor identity; remove only exact duplicates and invalid records.</li>
         <li>Clip to Ghana (geoBoundaries) and assign each detection to a regular grid cell and a UTC day.</li>
         <li>Count <b>active cell-days</b>: a day-cell pair counts once if either sensor detected activity. Detections seen by both are never double-counted, and no event-linking is claimed.</li>
-        <li>Use a constant constellation (Terra, Aqua, Suomi-NPP) across all years so changing satellite numbers do not create trends. NOAA-20/21 are available as an option.</li>
+        <li>Use <b>all satellites</b> by default (Terra, Aqua, Suomi-NPP, NOAA-20, NOAA-21): more satellites, more chances to see a fire. Because NOAA-20 (from 2018) and NOAA-21 (from 2023)
+          raise counts without any change in fire, every cell-day also keeps its <b>steady-set</b> count (Terra, Aqua, Suomi-NPP only), and the Sensor view menu offers that set for comparing years like for like.</li>
         <li>A month is "complete" only when the downloaded data archive covers all of it for every selected sensor product. A day with no detections is not treated as missing data. Incomplete months are hatched and excluded from baselines and from any comparison.</li>
       </ol>
+
+      <h3>2002 to 2011: before VIIRS</h3>
+      <p>
+        VIIRS only exists from 2012, but the burning calendar runs from August 2002 (the first full month with both MODIS satellites). Putting
+        MODIS-only years beside later "MODIS or VIIRS" years would show a false jump in 2012, because the combined measure always counts more.
+        So each earlier month is <b>estimated</b>: MODIS cell-days are converted to the combined scale with a line fitted, for each calendar month,
+        on the years when both sensors observed. Those months are dashed on the calendar, carry a 90% range, and say so in their explanation.
+        We checked the method by hiding the later years and predicting them (see Bridge check on the Sensor page): typical error is shown there.
+        What it cannot do: it assumes the MODIS-to-combined relationship of 2012 onwards also held earlier, and it cannot recover fires only VIIRS could see.
+        Before August 2002 only Terra was observing, so those months are shown but not compared. The most recent weeks come from NASA's
+        near-real-time stream and may be revised.
+      </p>
+
+      <h3>Ghana first, then West Africa</h3>
+      <p>
+        Ghana is the primary area and has the most detail: 1, 2 and 5 km grids, 16 regions, rainfall context, and the sensor-agreement, orbit-drift and
+        sensitivity analyses. The other fifteen West African countries (Côte d'Ivoire, Togo and Burkina Faso, Ghana's neighbours, are listed first) are processed with the
+        same method at country level on a 5 km grid, with a West Africa total. Each detection is placed in a country with the national outline; a grid cell takes the country
+        holding most of its detections, so cells on a border are approximate. Outside Ghana the app shows a note saying which analyses are not available.
+      </p>
 
       <h3>Historical comparison and unusual activity</h3>
       <p>
@@ -51,9 +73,22 @@ export default function MethodologyPage() {
         <li>No ground truth exists, so no accuracy, precision or recall is claimed.</li>
       </ul>
 
+      <h3>Colours and accessibility</h3>
+      <p>
+        The calendar and map use perceptually uniform colour ramps that get steadily lighter as activity rises (Inferno by default; Viridis and Cividis on request, Cividis being designed for
+        red-green colour-vision deficiency). Colour is never the only signal: every calendar cell prints its number, unusual months carry ▲ or ▼, estimated months are dashed, and label
+        colour is chosen for contrast. Calendar cells are keyboard-operable buttons with descriptive labels.
+      </p>
+
+      <h3>Built with AI assistance</h3>
+      <p>
+        TerraGuard was developed with the help of an AI coding assistant (Claude, by Anthropic), as the NASA Space Apps rules require us to say. The charts are drawn by code from the data;
+        no generative images or video are used. See the README for the full statement and the list of references.
+      </p>
+
       <h3>Credits</h3>
       <p>
-        Fire data: NASA FIRMS (LANCE/EOSDIS). Region boundaries: geoBoundaries (CC BY-SA 2.0). Place names: GeoNames (CC BY 4.0). Rainfall: NASA POWER. Map tiles: OpenStreetMap contributors.
+        Fire data: NASA FIRMS (LANCE/EOSDIS). Boundaries: geoBoundaries. Place names: GeoNames (CC BY 4.0). Rainfall: NASA POWER. Map tiles: OpenStreetMap contributors.
       </p>
     </section>
   );

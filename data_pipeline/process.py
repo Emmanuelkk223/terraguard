@@ -25,7 +25,7 @@ from .pipeline import (
 )
 
 PRODUCT_FILE = re.compile(
-    r"^(MODIS_SP|VIIRS_(?:SNPP|NOAA20|NOAA21)_SP)_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv$"
+    r"^(MODIS_(?:SP|NRT)|VIIRS_(?:SNPP|NOAA20|NOAA21)_(?:SP|NRT))_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv$"
 )
 
 
@@ -35,7 +35,9 @@ def group_files_by_product(input_dir: Path) -> dict[str, list[Path]]:
     for path in sorted(Path(input_dir).glob("*.csv")):
         match = PRODUCT_FILE.match(path.name)
         if match:
-            groups.setdefault(match.group(1), []).append(path)
+            # Near-real-time files (the months after the standard archive ends) join the
+            # same product, so one product = one continuous record.
+            groups.setdefault(match.group(1).replace("_NRT", "_SP"), []).append(path)
     return groups
 
 
@@ -73,6 +75,9 @@ def process_product(
     retained = canonicalize(add_derived_fields(valid))
     # Mixed MODIS (numeric) / VIIRS (l,n,h) confidence must share one dtype.
     retained["confidence"] = retained["confidence"].astype("string")
+    # Archive files carry a numeric version (6.03); near-real-time files a text one ("6.03NRT").
+    if "version" in retained:
+        retained["version"] = retained["version"].astype("string")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     atomic.to_parquet(retained, output_dir / f"{product}.parquet", index=False)

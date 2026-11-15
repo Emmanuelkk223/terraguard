@@ -18,8 +18,9 @@ import pandas as pd
 
 from .gazetteer import normalise
 
-# Countries for which TerraGuard has processed fire data. Add a code here only once its data are processed.
-COVERED_COUNTRIES = frozenset({"GH"})
+# Countries for which TerraGuard has processed fire data: Ghana in full detail, the others at country level.
+# Add a code here only once its data are processed.
+COVERED_COUNTRIES = frozenset({"GH", "CI", "TG", "BF", "BJ", "CV", "GM", "GN", "GW", "LR", "ML", "MR", "NE", "NG", "SN", "SL"})
 MIN_QUERY_CHARS = 2
 MAX_RESULTS = 20
 ALIASES = {  # other common ways to write a country
@@ -115,6 +116,7 @@ class Gazetteer:
         score += np.where((kinds == "region") & (score >= 800), 150, 0)
         score += self.rank[index] * 40
         score += np.where(np.isin(self.codes[index], list(COVERED_COUNTRIES)), 60, 0)
+        score += np.where(self.codes[index] == "GH", 45, 0)  # Ghana first: on an otherwise equal match, a Ghanaian place wins
         score += np.minimum(25, np.log10(self.population[index] + 1) * 5)
         score -= np.minimum(60, self.length[index] * 0.5)  # prefer the shorter, more specific name on a tie
         order = np.argsort(-score, kind="stable")[: max(1, min(limit, MAX_RESULTS))]

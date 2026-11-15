@@ -3,7 +3,7 @@ import { CircleMarker, GeoJSON, MapContainer, Popup, Rectangle, TileLayer, Toolt
 import type { LatLng, LatLngBoundsExpression, PathOptions } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { api } from "../services/api";
-import { infernoColor } from "../services/colors";
+import { rampColor, type RampName } from "../services/colors";
 import type { Focus } from "../services/places";
 import type { AreaQuery, CellCollection, CellFeature, Grid, Period } from "../types";
 
@@ -35,6 +35,7 @@ function cellBounds(lat: number, lon: number, cellKm: number, zoom: number): Lat
 }
 
 interface LayerProps {
+  ramp: RampName;
   features: CellFeature[];
   maxDays: number;
   cellKm: number;
@@ -44,7 +45,7 @@ interface LayerProps {
 }
 
 /** All cells as squares. Rebuilt only when data or zoom changes, not when a cell is pinned. */
-function CellLayer({ features, maxDays, cellKm, pinned, drawing, onPick }: LayerProps) {
+function CellLayer({ ramp, features, maxDays, cellKm, pinned, drawing, onPick }: LayerProps) {
   const map = useMap();
   const [zoom, setZoom] = useState(map.getZoom());
   useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
@@ -53,7 +54,7 @@ function CellLayer({ features, maxDays, cellKm, pinned, drawing, onPick }: Layer
     () =>
       features.map((f, i) => {
         const [lon, lat] = f.geometry.coordinates;
-        const colour = infernoColor(f.properties.active_days / maxDays);
+        const colour = rampColor(ramp, f.properties.active_days / maxDays);
         return (
           <Rectangle
             key={`${drawing}-${i}`}
@@ -65,7 +66,7 @@ function CellLayer({ features, maxDays, cellKm, pinned, drawing, onPick }: Layer
           />
         );
       }),
-    [features, maxDays, cellKm, zoom, onPick, drawing],
+    [features, maxDays, cellKm, zoom, onPick, drawing, ramp],
   );
 
   const ring = pinned !== null ? features[pinned] : null;
@@ -158,9 +159,11 @@ interface Props {
   period: Period | null;
   onBbox: (bbox: string | null) => void;
   focus?: Focus | null;
+  ramp?: RampName;
+  outsideGhana?: boolean;
 }
 
-export default function MapView({ q, period, onBbox, focus = null }: Props) {
+export default function MapView({ q, period, onBbox, focus = null, ramp = "inferno", outsideGhana = false }: Props) {
   const [cells, setCells] = useState<CellCollection | null>(null);
   const [outline, setOutline] = useState<GeoJSON.FeatureCollection | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -174,7 +177,7 @@ export default function MapView({ q, period, onBbox, focus = null }: Props) {
   const box = parseBox(q.bbox);
 
   useEffect(() => {
-    api.boundaries().then(setOutline).catch(() => setOutline(null));
+    api.boundaries(outsideGhana ? "wa" : "ghana").then(setOutline).catch(() => setOutline(null));
   }, []);
 
   useEffect(() => {
@@ -262,7 +265,7 @@ export default function MapView({ q, period, onBbox, focus = null }: Props) {
         />
         {outline && <GeoJSON data={outline} style={() => regionStyle} interactive={false} />}
         {cells && (
-          <CellLayer features={cells.features} maxDays={maxDays} cellKm={GRID_KM[q.grid]} pinned={pinned} drawing={drawing} onPick={onPick} />
+          <CellLayer ramp={ramp} features={cells.features} maxDays={maxDays} cellKm={GRID_KM[q.grid]} pinned={pinned} drawing={drawing} onPick={onPick} />
         )}
         {box && <Rectangle bounds={[[box[1], box[0]], [box[3], box[2]]]} interactive={false} pathOptions={boxStyle} />}
         <FlyToPlace focus={focus} />
@@ -294,7 +297,7 @@ export default function MapView({ q, period, onBbox, focus = null }: Props) {
       {cells && cells.features.length > 0 && (
         <div className="legend" aria-hidden="true">
           <span>1 day</span>
-          <div className="ramp" style={{ background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((s) => infernoColor(s)).join(",")})` }} />
+          <div className="ramp" style={{ background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((s) => rampColor(ramp, s)).join(",")})` }} />
           <span>{maxDays} days with a detection in the period (scale is relative to the busiest cell shown)</span>
         </div>
       )}

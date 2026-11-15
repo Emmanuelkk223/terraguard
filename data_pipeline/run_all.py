@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import date
 from pathlib import Path
 
 from . import atomic
@@ -27,11 +28,12 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("data/processed"))
     parser.add_argument("--boundary", type=Path, default=DEFAULT_ADM1)
     parser.add_argument("--cell-sizes-km", type=float, nargs="+", default=[1.0, 2.0, 5.0])
-    parser.add_argument("--all-platforms", action="store_true", help="Include NOAA-20/21 (constellation changes over time)")
+    parser.add_argument("--skip-process", action="store_true", help="Reuse the processed observations (steps 2 to 7 only)")
+    parser.add_argument("--steady-only", action="store_true", help="Use only Terra, Aqua and Suomi-NPP (default: all satellites)")
     args = parser.parse_args()
 
     print("1/7 processing raw files ...", flush=True)
-    meta = process(args.raw_dir, args.output_dir)
+    meta = json.loads((args.output_dir / "metadata.json").read_text(encoding="utf-8")) if args.skip_process else process(args.raw_dir, args.output_dir)
     covered = {name: info["covered_ranges"] for name, info in meta["products"].items()}
 
     print("2/7 harmonizing ...", flush=True)
@@ -39,7 +41,7 @@ def main() -> None:
         sorted((args.output_dir / "observations").glob("*.parquet")),
         args.output_dir / "harmonized",
         cell_sizes_km=tuple(args.cell_sizes_km),
-        platforms=None if args.all_platforms else STABLE_PLATFORMS,
+        platforms=STABLE_PLATFORMS if args.steady_only else None,
         regions=GhanaRegions(args.boundary),
         covered_ranges=covered,
     )
@@ -50,10 +52,16 @@ def main() -> None:
         for path in sorted((args.output_dir / "harmonized").glob("monthly_*km.csv"))
     ]
     atomic.write_text(args.output_dir / "analytics" / "analytics_metadata.json", json.dumps(summaries, indent=2))
+    import pandas as pd
+
     print("4/7 validation ...", flush=True)
     run_validation(args.output_dir / "harmonized", args.output_dir / "observations",
                    args.output_dir / "analytics" / "validation.json")
 
+    from .bridge import backtest
+
+    atomic.write_text(args.output_dir / "analytics" / "bridge_validation.json",
+                      json.dumps(backtest(pd.read_csv(args.output_dir / "harmonized" / "monthly_5km.csv")), indent=2))
     print("5/7 baseline vs Isolation Forest comparison ...", flush=True)
     import pandas as pd
 
@@ -67,7 +75,7 @@ def main() -> None:
     print("7/7 rainfall context (NASA POWER; needs network) ...", flush=True)
     try:
         run_environment(args.boundary, Path("data/raw/environment"), args.output_dir / "environment",
-                        args.output_dir / "analytics" / "calendar_5km.csv")
+                        args.output_dir / "analytics" / "calendar_5km.csv", start=2002, end=date.today().year)
     except Exception as exc:  # the rest of the pipeline is complete and valid without rainfall context
         print(f"  skipped rainfall context: {exc}", flush=True)
 

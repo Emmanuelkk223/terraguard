@@ -214,6 +214,8 @@ def _injection(test: pd.DataFrame, stats: dict, forests: dict) -> dict[str, obje
 
 
 def compare(calendar: pd.DataFrame, *, train_end: int = TRAIN_END_YEAR, seed: int = 0) -> dict[str, object]:
+    if "scored_cell_days" in calendar:  # compare the methods on the like-for-like series
+        calendar = calendar.assign(active_cell_days=calendar["scored_cell_days"])
     areas: dict[str, object] = {}
     pooled_hits = {label: {m: 0 for m in METHODS} for label in MULTIPLIERS}
     auc_sum = {label: {m: 0.0 for m in METHODS} for label in MULTIPLIERS}

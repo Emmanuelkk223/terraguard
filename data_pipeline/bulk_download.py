@@ -9,6 +9,7 @@ modified.
 from __future__ import annotations
 
 import argparse
+import http.client
 import os
 import re
 import time
@@ -21,7 +22,11 @@ from data_pipeline.acquire import DEFAULT_AREA, download_historical_area
 # First date each standard product is available (from the FIRMS
 # data_availability endpoint, checked 2026-11-14). Re-check before relying on it.
 PRODUCT_START = {
-    "MODIS_SP": date(2012, 1, 1),  # archive starts 2000-11; we use the overlap era
+    "MODIS_SP": date(2000, 11, 1),  # Terra from late 2000, Aqua added mid-2002
+    "MODIS_NRT": date(2026, 9, 1),  # near-real-time, after the standard archive ends
+    "VIIRS_SNPP_NRT": date(2026, 8, 1),
+    "VIIRS_NOAA20_NRT": date(2026, 8, 1),
+    "VIIRS_NOAA21_NRT": date(2026, 8, 1),
     "VIIRS_SNPP_SP": date(2012, 1, 20),
     "VIIRS_NOAA20_SP": date(2018, 4, 1),
     "VIIRS_NOAA21_SP": date(2023, 3, 1),
@@ -85,7 +90,7 @@ def download_product(
                 )
                 done += 1
                 break
-            except RuntimeError as exc:
+            except (RuntimeError, OSError, http.client.HTTPException) as exc:  # timeouts and cut-off transfers are retryable
                 if attempt == retries:
                     failed += 1
                     print(f"FAILED {source} {current}..{window_end}: {exc}", flush=True)
@@ -102,6 +107,8 @@ def download_product(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sources", nargs="+", default=list(PRODUCT_START))
+    parser.add_argument("--start", type=date.fromisoformat, default=None,
+                        help="override each product's first date")
     parser.add_argument("--end", type=date.fromisoformat, default=date(2025, 12, 31))
     parser.add_argument("--area", default=DEFAULT_AREA)
     parser.add_argument("--output-dir", type=Path, default=Path("data/raw/firms"))
@@ -113,7 +120,7 @@ def main() -> None:
         if source not in PRODUCT_START:
             raise SystemExit(f"Unknown source {source}; choose from {list(PRODUCT_START)}")
         done, failed = download_product(
-            source, PRODUCT_START[source], args.end,
+            source, args.start or PRODUCT_START[source], args.end,
             map_key=map_key, area=args.area, output_dir=args.output_dir,
         )
         print(f"{source}: complete, {done} windows ok, {failed} failed", flush=True)

@@ -44,15 +44,24 @@ def _cv(values: pd.Series) -> float | None:
 
 
 def validate_grid(monthly: pd.DataFrame) -> dict[str, object]:
-    national = monthly[(monthly["region"] == "Ghana") & monthly["coverage_ok"].astype(bool)].copy()
+    national = monthly[(monthly["region"] == "Ghana") & monthly[
+        "overlap_ok" if "overlap_ok" in monthly else "coverage_ok"].astype(bool)].copy()
     national["month_start"] = pd.to_datetime(national["month"])
     national["cal_month"] = national["month_start"].dt.month
     national = national[(national["modis_detections"] > 0) & (national["modis_cell_days"] > 0)]
+    # Agreement is judged against Suomi-NPP, the one VIIRS satellite present for the whole record; NOAA-20 and NOAA-21 joined in
+    # 2018 and 2023 and would put steps into the VIIRS series.
+    steady = "viirs_steady_detections" in national and "viirs_steady_cell_days" in national
     pairs = {
-        "raw_detections": ("modis_detections", "viirs_detections"),
-        "cell_days": ("modis_cell_days", "viirs_cell_days"),
+        "raw_detections": ("modis_detections", "viirs_steady_detections" if steady else "viirs_detections"),
+        "cell_days": ("modis_cell_days", "viirs_steady_cell_days" if steady else "viirs_cell_days"),
     }
-    result: dict[str, object] = {"months": int(len(national))}
+    result: dict[str, object] = {"months": int(len(national)), "viirs_basis": "Suomi-NPP" if steady else "all VIIRS satellites"}
+    if steady:
+        result["all_viirs_satellites"] = {
+            "raw_ratio_viirs_over_modis_mean": float((national["viirs_detections"] / national["modis_detections"]).mean()),
+            "cell_day_ratio_viirs_over_modis_mean": float((national["viirs_cell_days"] / national["modis_cell_days"]).mean()),
+        }
     for name, (m, v) in pairs.items():
         result[name] = {
             "spearman_raw_series": _spearman(national[m], national[v]),

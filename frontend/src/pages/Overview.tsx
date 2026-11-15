@@ -1,4 +1,5 @@
-import type { AnnualRow, CalRow } from "../types";
+import CurrentComparison from "../components/CurrentComparison";
+import type { AnnualRow, AreaQuery, CalRow } from "../types";
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const fmt = (n: number) => Math.round(n).toLocaleString("en-GB");
@@ -7,10 +8,11 @@ interface Props {
   rows: CalRow[];
   annual: AnnualRow[];
   region: string;
+  q: AreaQuery;
   onOpenCalendar: () => void;
 }
 
-export default function Overview({ rows, annual, region, onOpenCalendar }: Props) {
+export default function Overview({ rows, annual, region, q, onOpenCalendar }: Props) {
   const ok = rows.filter((r) => r.coverage_ok);
   const total = ok.reduce((s, r) => s + r.active_cell_days, 0);
   const modis = ok.reduce((s, r) => s + r.modis_cell_days, 0);
@@ -48,9 +50,10 @@ export default function Overview({ rows, annual, region, onOpenCalendar }: Props
           <Stat label="Highest month" value={peakMonth ? `${MONTH_NAMES[peakMonth.month - 1]} ${peakMonth.year}` : "–"} note={peakMonth ? `${fmt(peakMonth.active_cell_days)} cell-days` : ""} />
           <Stat label="Highest year" value={peakYear ? String(peakYear.year) : "–"} note={peakYear ? `${fmt(peakYear.active_cell_days)} cell-days (complete years only)` : "no complete year"} />
           <Stat label="Unusual months flagged" value={String(flagged)} note="vs same month in other years" />
-          <Stat label="Period covered" value={first ? `${first.year}–${last.year}` : "–"} note="Terra, Aqua, Suomi-NPP" />
+          <Stat label="Period covered" value={first ? `${first.year}–${last.year}` : "–"} note={ok.some((r) => r.estimated) ? "All satellites · before 2012 estimated from MODIS" : "All satellites"} />
         </div>
       )}
+      <CurrentComparison q={q} />
     </section>
   );
 }

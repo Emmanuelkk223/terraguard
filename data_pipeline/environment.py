@@ -101,7 +101,7 @@ def association(calendar_frame: pd.DataFrame, rainfall: pd.DataFrame) -> dict[st
         if rain.empty:
             continue
         frame = pd.DataFrame({"year": burn["year"].to_numpy(), "month": burn["month"].to_numpy(),
-                              "burn": burn["active_cell_days"].to_numpy(float)})
+                              "burn": burn["scored_cell_days" if "scored_cell_days" in burn else "active_cell_days"].to_numpy(float)})
         rain = rain.assign(date=pd.to_datetime(dict(year=rain["year"], month=rain["month"], day=1))).set_index("date").sort_index()
         frame["date"] = pd.to_datetime(dict(year=frame["year"], month=frame["month"], day=1))
         frame = frame.set_index("date").sort_index()

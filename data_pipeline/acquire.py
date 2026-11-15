@@ -90,7 +90,7 @@ def download_historical_area(
         )
         request = Request(url, headers={"User-Agent": "TerraGuard-data-pipeline/1.0"})
         try:
-            with urlopen(request, timeout=60) as response:
+            with urlopen(request, timeout=240) as response:  # a whole-region window is several MB
                 body = response.read()
         except (HTTPError, URLError) as exc:
             raise RuntimeError(

@@ -137,6 +137,9 @@ button.link { background: none; border: 0; color: var(--teal); cursor: pointer; 
 .cell:hover { border-color: #fff; z-index: 1; }
 .cell.selected { border: 2px solid #fff; outline: 2px solid var(--green); outline-offset: 1px; z-index: 2; }
 .cell.incomplete { background: repeating-linear-gradient(45deg, #1b2b3f, #1b2b3f 4px, #14202f 4px, #14202f 8px); }
+.cell.estimated { box-shadow: inset 0 0 0 2px rgba(255,255,255,.28); border-style: dashed; border-color: rgba(255,255,255,.55); }
+.cell.estimated:hover { border-style: solid; border-color: #fff; }
+.swatch.estimated { background: var(--panel-2); border: 1px dashed rgba(255,255,255,.7); }
 .cell.empty { cursor: default; background: transparent; border: 1px dashed var(--line); }
 .cell.empty:hover { border-color: var(--line); }
 .flag { position: absolute; top: 0; right: 3px; font-size: .62rem; font-weight: 800; }
@@ -319,3 +322,25 @@ input[type="range"] { width: min(420px, 100%); accent-color: var(--amber); }
 
 /* search gets its own full row under the brand and controls, so it is easy to find */
 .search { order: 3; flex: 1 1 100%; max-width: 760px; }
+
+/* ---- current period vs previous years ---- */
+.current { margin-top: 22px; padding: 16px 20px; background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--amber); }
+.current-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.current-head h3 { margin: 0; }
+.current-line { margin: 10px 0 8px; line-height: 1.5; }
+.current-chart { width: 100%; height: 150px; display: block; }
+.current-chart text { fill: var(--muted); font-size: 10px; }
+
+/* Legend markers reuse the cell flag classes, which are absolutely positioned inside a cell. */
+.legend .flag { position: static; font-size: .8rem; }
+.legend .swatch { flex: none; }
+.legend .ramp { flex: none; }
+
+/* ---- legend controls, scope note ---- */
+.legend select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); padding: 2px 6px; margin-left: 4px; font: inherit; }
+.tool.on { background: var(--amber); color: #14100a; border-color: var(--amber); }
+.legend-note { flex-basis: 100%; font-size: .74rem; line-height: 1.4; max-width: 70ch; }
+.scope-note { margin: 0; border-left-width: 3px; }
+
+.join { margin-left: 4px; font-size: .58rem; font-weight: 700; color: var(--amber); letter-spacing: .02em; }
+.constellation { margin: 10px 0 0; font-size: .78rem; line-height: 1.45; }

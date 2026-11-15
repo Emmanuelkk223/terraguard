@@ -1,11 +1,11 @@
 """Sensitivity of the headline results to reasonable analysis choices.
 
-TerraGuard's default choices (5 km grid, Terra + Aqua + Suomi-NPP, no quality filter) are one
+TerraGuard's default choices (5 km grid, all satellites, no quality filter) are one
 defensible configuration, not the only one. This module re-runs the harmonization under
 alternatives and reports whether the national conclusions move:
 
   grid size        1 km, 2 km, 5 km (default)
-  platform set     default stable constellation vs all five platforms (adds NOAA-20/21 over time)
+  platform set     default all five satellites vs the steady set (Terra, Aqua, Suomi-NPP only)
   quality filter   confidence >= nominal, confidence = high (each sensor's own classes, not comparable
                    across sensors), and presumed-vegetation-fire type only
 
@@ -38,7 +38,7 @@ SEASON_FRACTION = 0.25
 
 # name -> (group, label, harmonize keyword arguments)
 FILTER_SCENARIOS: dict[str, tuple[str, str, dict]] = {
-    "all_platforms": ("Platform set", "All five platforms (adds NOAA-20 from 2018, NOAA-21 from 2023)", {"platforms": None}),
+    "steady_set": ("Platform set", "Steady set only: Terra, Aqua and Suomi-NPP (no satellite added over time)", {"platforms": STABLE_PLATFORMS}),
     "confidence_nominal": ("Quality filter", "Confidence nominal or high only", {"min_confidence": "nominal"}),
     "confidence_high": ("Quality filter", "High confidence only", {"min_confidence": "high"}),
     "vegetation_only": ("Quality filter", "Presumed vegetation fires only (FIRMS type 0)", {"vegetation_only": True}),
@@ -125,7 +125,7 @@ def run(
 
     default_monthly = pd.read_csv(harmonized_dir / "monthly_5km.csv")
     summary, default_series = summarise(default_monthly, None)
-    scenarios["default_5km"] = {"group": "Default", "label": "5 km grid, Terra + Aqua + Suomi-NPP, no quality filter", **summary}
+    scenarios["default_5km"] = {"group": "Default", "label": "5 km grid, all satellites (Terra, Aqua, Suomi-NPP, NOAA-20, NOAA-21), no quality filter", **summary}
 
     for km in ("1km", "2km"):
         path = harmonized_dir / f"monthly_{km}.csv"
@@ -137,7 +137,7 @@ def run(
         with tempfile.TemporaryDirectory() as tmp:
             harmonize(
                 files, Path(tmp), cell_sizes_km=(5.0,), regions=regions, covered_ranges=covered_ranges,
-                platforms=options.get("platforms", STABLE_PLATFORMS),
+                platforms=options.get("platforms"),
                 min_confidence=options.get("min_confidence"), vegetation_only=options.get("vegetation_only", False),
             )
             summary, _ = summarise(pd.read_csv(Path(tmp) / "monthly_5km.csv"), default_series)

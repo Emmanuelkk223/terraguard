@@ -70,13 +70,13 @@ def test_run_covers_default_grid_and_filter_scenarios(tmp_path: Path) -> None:
                "VIIRS_NOAA20_SP": [["2018-04-01", "2025-12-31"]]}
     from data_pipeline.regions import GhanaRegions
     harmonize(sorted(obs_dir.glob("*.parquet")), harm_dir, cell_sizes_km=(1.0, 2.0, 5.0), regions=GhanaRegions(),
-              platforms=STABLE_PLATFORMS, covered_ranges=covered)
+              platforms=None, covered_ranges=covered)  # all satellites is the default
     report = run(obs_dir, harm_dir, covered)
     names = set(report["scenarios"])
-    assert {"default_5km", "grid_1km", "grid_2km", "all_platforms", "confidence_nominal", "confidence_high", "vegetation_only"} <= names
+    assert {"default_5km", "grid_1km", "grid_2km", "steady_set", "confidence_nominal", "confidence_high", "vegetation_only"} <= names
     totals = {n: s["total_active_cell_days"] for n, s in report["scenarios"].items()}
     assert totals["confidence_high"] <= totals["confidence_nominal"] <= totals["default_5km"]  # stricter filters keep less
-    assert totals["all_platforms"] >= totals["default_5km"]  # more platforms can only add cell-days
+    assert totals["steady_set"] <= totals["default_5km"]  # fewer satellites can only lose cell-days
     assert totals["grid_1km"] >= totals["grid_2km"] >= totals["default_5km"]  # finer cells, more cell-days
     json.dumps(report, allow_nan=False)  # strict JSON for the API
     assert any("ground truth" in n for n in report["notes"])

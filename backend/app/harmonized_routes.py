@@ -19,29 +19,61 @@ from data_pipeline.area_analytics import (
     CUSTOM_LABEL, VIEW_COLUMN, activity_series, area_calendar, parse_bbox, select_cells,
 )
 from data_pipeline.calendar_analytics import annual_summary, seasonal_summary
+from data_pipeline.countries import DEFAULT_BOUNDARIES, NAME_BY_ISO3, ORDER as WA_COUNTRY_ORDER, REGION_NAME as WA_NAME, ROLE_BY_NAME, country_bounds
 from data_pipeline.harmonize import cell_centres
 from data_pipeline.report import build_blocks, to_html, to_markdown
 
+from backend.app.hotspot_routes import register as register_hotspot_routes
+
 Grid = Literal["1km", "2km", "5km"]
-Sensor = Literal["harmonized", "modis", "viirs"]
+Sensor = Literal["harmonized", "steady", "modis", "viirs"]
 GRID_KM = {"1km": 1.0, "2km": 2.0, "5km": 5.0}
 MAX_MAP_CELLS = 20000
 METADATA = "harmonized/harmonization_metadata.json"
 CACHE_LIMIT = 48
+GHANA_BOX = (-3.26, 4.74, 1.20, 11.17)  # west, south, east, north: the area the detailed Ghana dataset covers
 
 
 def register(app: FastAPI, store: Any, jsonable: Any) -> None:
     """Attach the harmonized endpoints; ``store`` is the app's DataStore."""
     cache: dict[tuple, pd.DataFrame] = {}
 
-    def analytics(kind: str, grid: str) -> pd.DataFrame:
-        return store.csv(f"analytics/{kind}_{grid}.csv")
+    # Two datasets: "ghana" (full detail: 1, 2 and 5 km, 16 regions) and "wa" (all of West Africa, 5 km, by country).
+    # Ghana is always served from its own dataset; everything else comes from the West Africa one when it exists.
+    def prefix(scope: str) -> str:
+        return "" if scope == "ghana" else "wa/"
 
-    def known_regions(grid: str) -> set[str]:
-        return set(analytics("calendar", grid)["region"].unique())
+    def wa_available() -> bool:
+        return store.exists("wa/harmonized/monthly_5km.csv") and store.exists("wa/analytics/calendar_5km.csv")
 
-    def check_region(grid: str, region: str | None) -> None:
-        if region and region not in known_regions(grid):
+    def national_name(scope: str) -> str:
+        return "Ghana" if scope == "ghana" else WA_NAME
+
+    def analytics(kind: str, grid: str, scope: str = "ghana") -> pd.DataFrame:
+        return store.csv(f"{prefix(scope)}analytics/{kind}_{grid}.csv")
+
+    def known_regions(grid: str, scope: str = "ghana") -> set[str]:
+        return set(analytics("calendar", grid, scope)["region"].unique())
+
+    def scope_for(region: str | None, bbox_text: str | None) -> str:
+        if not wa_available():
+            return "ghana"
+        bbox = parsed_bbox(bbox_text)
+        if bbox is not None:
+            west, south, east, north = bbox
+            inside = west >= GHANA_BOX[0] and south >= GHANA_BOX[1] and east <= GHANA_BOX[2] and north <= GHANA_BOX[3]
+            return "ghana" if inside else "wa"
+        if not region or region == "Ghana" or region in known_regions("5km", "ghana"):
+            return "ghana"
+        return "wa"
+
+    def check_grid(grid: str, scope: str) -> None:
+        if scope == "wa" and grid != "5km":
+            raise HTTPException(422, "Outside Ghana only the 5 km grid is available; Ghana has 1, 2 and 5 km.")
+
+    def check_region(grid: str, region: str | None, scope: str | None = None) -> None:
+        scope = scope or scope_for(region, None)
+        if region and region not in known_regions(grid, scope):
             raise HTTPException(422, f"Unknown region '{region}'")
 
     def parsed_bbox(bbox: str | None) -> tuple[float, float, float, float] | None:
@@ -64,28 +96,28 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
             frame = frame[frame["year"] <= end_year]
         return frame
 
-    def cell_days_table(grid: str) -> pd.DataFrame:
-        return store.parquet(f"harmonized/cell_days_{grid}.parquet")
+    def cell_days_table(grid: str, scope: str = "ghana") -> pd.DataFrame:
+        return store.parquet(f"{prefix(scope)}harmonized/cell_days_{grid}.parquet")
 
-    def national_monthly(grid: str) -> pd.DataFrame:
-        return store.csv(f"harmonized/monthly_{grid}.csv")
+    def national_monthly(grid: str, scope: str = "ghana") -> pd.DataFrame:
+        return store.csv(f"{prefix(scope)}harmonized/monthly_{grid}.csv")
 
-    def tokens(grid: str) -> tuple:
+    def tokens(grid: str, scope: str = "ghana") -> tuple:
         """Cache key component that changes when the underlying files are regenerated."""
         return tuple(
             (store.base / name).stat().st_mtime if store.exists(name) else None
-            for name in (f"harmonized/cell_days_{grid}.parquet", f"harmonized/monthly_{grid}.csv")
+            for name in (f"{prefix(scope)}harmonized/cell_days_{grid}.parquet", f"{prefix(scope)}harmonized/monthly_{grid}.csv")
         )
 
-    def on_demand_calendar(grid: str, region: str | None, sensor: str, bbox: tuple | None) -> pd.DataFrame:
-        key = ("calendar", grid, region, sensor, bbox, tokens(grid))
+    def on_demand_calendar(grid: str, region: str | None, sensor: str, bbox: tuple | None, scope: str = "ghana") -> pd.DataFrame:
+        key = ("calendar", scope, grid, region, sensor, bbox, tokens(grid, scope))
         if key not in cache:
             if len(cache) >= CACHE_LIMIT:
                 cache.pop(next(iter(cache)))
             try:
                 cache[key] = area_calendar(
-                    cell_days_table(grid), GRID_KM[grid], national_monthly(grid),
-                    view=sensor, region=None if bbox else region, bbox=bbox,
+                    cell_days_table(grid, scope), GRID_KM[grid], national_monthly(grid, scope),
+                    view=sensor, region=None if bbox else region, bbox=bbox, national_name=national_name(scope),
                 )
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from exc
@@ -94,20 +126,22 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
     def calendar_frame(grid: str, region: str, sensor: str, bbox_text: str | None) -> pd.DataFrame:
         """The calendar for the requested view and area (precomputed when it is the default view)."""
         bbox = parsed_bbox(bbox_text)
+        scope = scope_for(region, bbox_text)
+        check_grid(grid, scope)
         if bbox is None:
-            check_region(grid, region)
+            check_region(grid, region, scope)
             if sensor == "harmonized":
-                frame = analytics("calendar", grid)
+                frame = analytics("calendar", grid, scope)
                 return frame[frame["region"] == region]
-        return on_demand_calendar(grid, region, sensor, bbox)
+        return on_demand_calendar(grid, region, sensor, bbox, scope)
 
     def area_label(region: str, bbox_text: str | None) -> str:
         return CUSTOM_LABEL if bbox_text else region
 
     @app.get("/api/boundaries")
-    def boundaries() -> Any:
-        """Ghana ADM1 outline (geoBoundaries, simplified; CC BY-SA 2.0)."""
-        path = store.base.parent / "reference" / "GHA_ADM1.geojson"
+    def boundaries(scope: Literal["ghana", "wa"] = "ghana") -> Any:
+        """Ghana ADM1 outline, or the sixteen national outlines with scope=wa (geoBoundaries, simplified)."""
+        path = store.base.parent / "reference" / ("WA_ADM0.geojson" if scope == "wa" else "GHA_ADM1.geojson")
         if not path.is_file():
             raise HTTPException(503, "Reference boundaries are not available")
         return Response(path.read_text(encoding="utf-8"), media_type="application/geo+json")
@@ -190,6 +224,30 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
         names = sorted(known_regions(grid))
         return {"regions": ["Ghana"] + [n for n in names if n != "Ghana"]}
 
+    @app.get("/api/areas")
+    def areas() -> dict[str, Any]:
+        """Every selectable area, grouped and ordered: Ghana first, then its regions, then West Africa."""
+        ghana_regions = [n for n in sorted(known_regions("5km")) if n != "Ghana"]
+        boxes: dict[str, list[float]] = {}
+        wa_file = store.base.parent / "reference" / "WA_ADM0.geojson"
+        if wa_available() and wa_file.is_file():
+            boxes = country_bounds(wa_file)
+        boxes["Ghana"] = [-3.3, 4.7, 1.3, 11.2]
+        boxes[WA_NAME] = [-25.6, 4.0, 16.3, 27.6]
+        groups = [
+            {"label": "Ghana", "areas": [{"name": "Ghana", "grids": ["1km", "2km", "5km"], "bbox": boxes["Ghana"]}]},
+            {"label": "Ghana regions", "areas": [{"name": n, "grids": ["1km", "2km", "5km"]} for n in ghana_regions]},
+        ]
+        if wa_available():
+            have = known_regions("5km", "wa")
+            others = [n for n in WA_COUNTRY_ORDER if n != "Ghana" and n in have]
+            groups.append({"label": "West Africa", "areas": [{"name": WA_NAME, "grids": ["5km"], "bbox": boxes[WA_NAME]}]})
+            groups.append({"label": "Neighbouring countries",
+                           "areas": [{"name": n, "grids": ["5km"], "bbox": boxes.get(n)} for n in others if ROLE_BY_NAME[n] == "neighbour"]})
+            groups.append({"label": "Other West African countries",
+                           "areas": [{"name": n, "grids": ["5km"], "bbox": boxes.get(n)} for n in others if ROLE_BY_NAME[n] != "neighbour"]})
+        return {"default": "Ghana", "west_africa_available": wa_available(), "groups": [g for g in groups if g["areas"]]}
+
     @app.get("/api/calendar")
     def calendar_rows(
         grid: Grid = "5km", region: str = "Ghana", sensor: Sensor = "harmonized", bbox: str | None = None,
@@ -220,24 +278,31 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
     def seasonal(grid: Grid = "5km", region: str = "Ghana", sensor: Sensor = "harmonized",
                  bbox: str | None = None) -> dict[str, Any]:
         if sensor == "harmonized" and not bbox:
-            check_region(grid, region)
-            frame = analytics("seasonal", grid)
+            scope = scope_for(region, None)
+            check_grid(grid, scope)
+            check_region(grid, region, scope)
+            frame = analytics("seasonal", grid, scope)
             frame = frame[frame["region"] == region]
         else:
             frame = seasonal_summary(calendar_frame(grid, region, sensor, bbox))
         return {"grid": grid, "region": area_label(region, bbox), "data": jsonable(frame)}
 
     @app.get("/api/seasonal/regions")
-    def seasonal_regions(grid: Grid = "5km") -> dict[str, Any]:
+    def seasonal_regions(grid: Grid = "5km", scope: Literal["ghana", "wa"] = "ghana") -> dict[str, Any]:
         """Seasonal statistics for every region at once (harmonized view), for regional comparison."""
-        return {"grid": grid, "data": jsonable(analytics("seasonal", grid))}
+        if scope == "wa" and not wa_available():
+            raise HTTPException(503, "West Africa data has not been processed")
+        check_grid(grid, scope)
+        return {"grid": grid, "scope": scope, "data": jsonable(analytics("seasonal", grid, scope))}
 
     @app.get("/api/annual")
     def annual(grid: Grid = "5km", region: str = "Ghana", sensor: Sensor = "harmonized",
                bbox: str | None = None) -> dict[str, Any]:
         if sensor == "harmonized" and not bbox:
-            check_region(grid, region)
-            frame = analytics("annual", grid)
+            scope = scope_for(region, None)
+            check_grid(grid, scope)
+            check_region(grid, region, scope)
+            frame = analytics("annual", grid, scope)
             frame = frame[frame["region"] == region]
         else:
             frame = annual_summary(calendar_frame(grid, region, sensor, bbox))
@@ -257,7 +322,9 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
 
     def cells_in_period(grid: str, first: pd.Timestamp, last: pd.Timestamp, region: str | None,
                         bbox_text: str | None) -> pd.DataFrame:
-        path = f"harmonized/cell_days_{grid}.parquet"
+        scope = scope_for(region, bbox_text)
+        check_grid(grid, scope)
+        path = f"{prefix(scope)}harmonized/cell_days_{grid}.parquet"
         if not store.exists(path):
             raise HTTPException(503, f"Analytical dataset '{path}' is not available")
         try:
@@ -266,8 +333,8 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
             raise HTTPException(503, f"Analytical dataset '{path}' could not be read; it may be updating. Retry in a moment.") from exc
         bbox = parsed_bbox(bbox_text)
         if bbox is None:
-            check_region(grid, region)
-        return select_cells(frame, GRID_KM[grid], region=None if bbox else region, bbox=bbox)
+            check_region(grid, region, scope)
+        return select_cells(frame, GRID_KM[grid], region=None if bbox else region, bbox=bbox, national=national_name(scope))
 
     def aggregate_cells(frame: pd.DataFrame, grid: str, sensor: str) -> pd.DataFrame:
         columns = ["grid_x", "grid_y", "active_days", "modis_detections", "viirs_detections",
@@ -275,7 +342,13 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
         if frame.empty:
             return pd.DataFrame(columns=columns)
         keys = ["grid_x", "grid_y"]
-        in_view = frame if sensor == "harmonized" else frame[frame[f"{sensor}_detections"] > 0]
+        if sensor == "harmonized":
+            in_view = frame
+        elif sensor == "steady":
+            viirs_steady = frame["viirs_steady_detections"] if "viirs_steady_detections" in frame else frame["viirs_detections"]
+            in_view = frame[(frame["modis_detections"] > 0) | (viirs_steady > 0)]
+        else:
+            in_view = frame[frame[f"{sensor}_detections"] > 0]
         active = in_view.groupby(keys, observed=True)["date"].nunique().rename("active_days")
         sums = (
             frame.assign(is_both=frame["occupied_by"] == "both")
@@ -336,6 +409,7 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
             "# source: NASA FIRMS standard-processing MODIS and VIIRS active-fire detections",
             f"# harmonization: {meta.get('harmonization_method', 'n/a')} version {meta.get('harmonization_version', 'n/a')}",
             "# note: counts are satellite detections or active cell-days, not unique fires; sensors are not calibrated to each other",
+            "# software: TerraGuard, developed with AI-tool assistance (Claude Code); see README, section 'Built with AI assistance'",
         ] + [f"# {k}: {v}" for k, v in header.items()]
         body = "\n".join(lines) + "\n" + frame.to_csv(index=False)
         return Response(body, media_type="text/csv",
@@ -407,6 +481,17 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
         return csv_response(frame, f"terraguard_{interval}_{first.date()}_{last.date()}_{sensor}_{grid}.csv",
                             {"area": describe_area(region, bbox), "sensor view": sensor, "grid": grid,
                              "interval": interval, "period": f"{first.date()} to {last.date()}"})
+
+    register_hotspot_routes(app, store, jsonable, {
+        "parsed_bbox": parsed_bbox, "check_region": check_region, "cell_days_table": cell_days_table,
+        "calendar_frame": calendar_frame, "area_label": area_label, "scope_for": scope_for,
+        "national_name": national_name, "check_grid": check_grid,
+    })
+
+    @app.get("/api/bridge-validation")
+    def bridge_validation() -> dict[str, Any]:
+        """Hold-out back-test of the 2002-2011 bridge (see data_pipeline/bridge.py)."""
+        return store.json("analytics/bridge_validation.json")
 
 
 __all__ = ["register", "VIEW_COLUMN"]

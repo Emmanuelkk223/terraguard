@@ -1,12 +1,20 @@
+import { useEffect, useState } from "react";
 import { AgreementChart, RatioChart, SensorCellDaysChart } from "../components/Charts";
 import ChartFrame from "../components/ChartFrame";
 import SensitivityPanel from "../components/SensitivityPanel";
-import type { CalRow, Grid, HarmonizationMeta, Validation } from "../types";
+import { api } from "../services/api";
+import type { BridgeValidation, CalRow, Grid, HarmonizationMeta, Validation } from "../types";
 
 interface Props { rows: CalRow[]; meta: HarmonizationMeta | null; validation: Validation | null; grid: Grid; region: string }
 const f2 = (n: number | null | undefined) => (n === null || n === undefined ? "–" : n.toFixed(2));
 
-export default function SensorsPage({ rows, meta, validation, grid, region }: Props) {
+export default function SensorsPage({ rows: allRows, meta, validation, grid, region }: Props) {
+  // Sensor comparisons only make sense where both sensors observed: drop the MODIS-only, estimated years.
+  const rows = allRows.filter((r) => !r.estimated);
+  const [bridge, setBridge] = useState<BridgeValidation | null>(null);
+  useEffect(() => {
+    api.bridgeValidation().then(setBridge).catch(() => setBridge(null));
+  }, []);
   const v = validation?.grids[grid];
   const drift = validation?.overpass_hour_by_year;
   const hourText = (h: number | undefined) => (h === undefined ? "–" : `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, "0")}`);
@@ -77,6 +85,32 @@ export default function SensorsPage({ rows, meta, validation, grid, region }: Pr
           <p className="muted">
             Between 2019 and 2025 Terra's overpass moved about 65 minutes earlier and Aqua's about 65 minutes later, so the MODIS series can show changes that are not changes
             in fire. The VIIRS platforms stayed near 13:30, which is why Suomi-NPP anchors the default series.
+          </p>
+        </>
+      )}
+      {bridge && bridge.backtests.length > 0 && (
+        <>
+          <h3>Bridge check: how good are the estimated 2002–2011 months?</h3>
+          <p className="muted">
+            Before VIIRS existed, each month is estimated from MODIS using the relationship measured when both sensors observed.
+            To test that, we hide the later years, fit on the earlier ones and predict the hidden months, whose true values we know.
+          </p>
+          <table className="table narrow">
+            <thead><tr><th>Fitted on</th><th>Predicted</th><th>Months</th><th>Typical error</th><th>Bias</th><th>90% range covers</th></tr></thead>
+            <tbody>
+              {bridge.backtests.map((b) => (
+                <tr key={b.fit_years}>
+                  <th>{b.fit_years}</th><td>{b.test_years}</td><td>{b.test_months}</td>
+                  <td>{b.median_absolute_error_pct.toFixed(0)}%</td>
+                  <td>{b.median_bias_pct > 0 ? "+" : ""}{b.median_bias_pct.toFixed(0)}%</td>
+                  <td>{(b.range_90_coverage * 100).toFixed(0)}% of months</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="muted small">
+            Estimated months are therefore good for seasons and large swings, not for small differences between neighbouring years.
+            The check cannot show that the relationship held before 2012.
           </p>
         </>
       )}

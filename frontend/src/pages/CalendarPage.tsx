@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import CalendarHeatmap from "../components/CalendarHeatmap";
+import CalendarHeatmap, { type Measure } from "../components/CalendarHeatmap";
+import { loadRamp, saveRamp, type RampName } from "../services/colors";
 import { SeriesChart } from "../components/Charts";
 import MapView from "../components/MapView";
 import MonthDetail from "../components/MonthDetail";
 import ChartFrame from "../components/ChartFrame";
-import { api, exportUrl, reportUrl } from "../services/api";
+import { api, exportUrl, hotspotsUrl, reportUrl } from "../services/api";
 import type { Focus } from "../services/places";
-import type { AreaQuery, CalRow, Period, RainRow, Selection, SeriesRow } from "../types";
+import type { AreaQuery, CalRow, HotspotPreview, Period, RainRow, Selection, SeriesRow } from "../types";
 
 const MAX_DAILY_DAYS = 1100;
 const DAY_MS = 86_400_000;
@@ -27,14 +28,34 @@ interface Props {
   onSelect: (s: Selection) => void;
   onBbox: (bbox: string | null) => void;
   focus?: Focus | null;
+  outsideGhana?: boolean;
 }
 
-export default function CalendarPage({ rows, q, heading, selection, onSelect, onBbox, focus = null }: Props) {
+export default function CalendarPage({ rows, q, heading, selection, onSelect, onBbox, focus = null, outsideGhana = false }: Props) {
+  const [ramp, setRampState] = useState<RampName>(loadRamp);
+  const [measure, setMeasure] = useState<Measure>("cells");
+  const setRamp = (r: RampName) => {
+    setRampState(r);
+    saveRamp(r);
+  };
   const [period, setPeriod] = useState<Period | null>(selection ? monthPeriod(selection) : null);
   const [wantedInterval, setWantedInterval] = useState<"day" | "week">("day");
   const [series, setSeries] = useState<SeriesRow[]>([]);
   const [seriesError, setSeriesError] = useState<string | null>(null);
   const [rain, setRain] = useState<RainRow[]>([]);
+  const [hotspots, setHotspots] = useState<HotspotPreview | null>(null);
+  const [hotspotError, setHotspotError] = useState<string | null>(null);
+
+  // How many individual detections a download would hold, so the user knows before clicking.
+  useEffect(() => {
+    if (!period) return;
+    const controller = new AbortController();
+    setHotspotError(null);
+    api.hotspotPreview(q, period, controller.signal)
+      .then(setHotspots)
+      .catch((e: Error) => !controller.signal.aborted && (setHotspots(null), setHotspotError(e.message)));
+    return () => controller.abort();
+  }, [q, period]);
 
   // Rainfall context exists for Ghana and its named regions, not for a custom area.
   useEffect(() => {
@@ -71,7 +92,7 @@ export default function CalendarPage({ rows, q, heading, selection, onSelect, on
   }, [q, period, interval]);
 
   const bounds = useMemo(() => {
-    if (!rows.length) return { min: "2012-01-01", max: "2025-12-31" };
+    if (!rows.length) return { min: "2002-08-01", max: new Date().toISOString().slice(0, 10) };
     const first = rows[0], last = rows[rows.length - 1];
     return { min: first.month_start, max: monthPeriod({ year: last.year, month: last.month }).end };
   }, [rows]);
@@ -102,7 +123,7 @@ export default function CalendarPage({ rows, q, heading, selection, onSelect, on
         Each cell is one month. Colour shows active cell-days for the chosen sensor view. Select a month to compare it with the
         same calendar month in other years, then refine the period, draw a custom area, or click a bar to zoom to a day or week.
       </p>
-      <CalendarHeatmap rows={rows} selected={selection} onSelect={onSelect} />
+      <CalendarHeatmap rows={rows} selected={selection} onSelect={onSelect} ramp={ramp} onRamp={setRamp} measure={measure} onMeasure={setMeasure} sensor={q.sensor} />
 
       <h3>Period</h3>
       <div className="period-bar">
@@ -144,7 +165,7 @@ export default function CalendarPage({ rows, q, heading, selection, onSelect, on
             </p>
           </aside>
         )}
-        <MapView q={q} period={period} onBbox={onBbox} focus={focus} />
+        <MapView q={q} period={period} onBbox={onBbox} focus={focus} ramp={ramp} outsideGhana={outsideGhana} />
       </div>
 
       <h3>{interval === "day" ? "Daily" : "Weekly"} activity</h3>
@@ -164,10 +185,20 @@ export default function CalendarPage({ rows, q, heading, selection, onSelect, on
         {period && (
           <>
             <a className="button" href={exportUrl("cells", q, { start: period.start, end: period.end })}>Download this period's cells CSV</a>
-            <a className="button" href={exportUrl("series", q, { start: period.start, end: period.end, interval })}>Download {interval}ly series CSV</a>
+            <a className="button" href={exportUrl("series", q, { start: period.start, end: period.end, interval })}>Download {interval === "day" ? "daily" : "weekly"} series CSV</a>
+            {hotspots && !hotspots.too_large && (
+              <a className="button" href={hotspotsUrl(q, period)}>Download the {hotspots.rows.toLocaleString("en-GB")} hotspots (CSV)</a>
+            )}
           </>
         )}
       </div>
+      {hotspots?.too_large && (
+        <p className="muted small">
+          This period holds {hotspots.rows.toLocaleString("en-GB")} individual detections, above the {hotspots.limit.toLocaleString("en-GB")} download limit.
+          Choose a shorter period or a smaller area to download them one by one.
+        </p>
+      )}
+      {hotspotError && <p className="muted small">Hotspot count unavailable: {hotspotError}</p>}
     </section>
   );
 }

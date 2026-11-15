@@ -143,7 +143,8 @@ def _closing(meta: dict | None, quality: dict | None) -> list[Block]:
     blocks += [("h2", "Limitations"), ("ul", LIMITATIONS), ("h2", "Provenance")]
     harmonization = (meta or {}).get("harmonization", meta or {})
     blocks.append(("ul", [
-        "Source: NASA FIRMS standard-processing MODIS and VIIRS (375 m) active-fire detections, 2012-2025.",
+        "Source: NASA FIRMS MODIS (from 2000) and VIIRS 375 m (from 2012) active-fire detections; months before VIIRS are estimated from MODIS and labelled as such.",
+        "Software: TerraGuard, developed with AI-tool assistance (Claude Code); see the README.",
         f"Method: {harmonization.get('harmonization_method', 'n/a')} (version {harmonization.get('harmonization_version', 'n/a')}); platforms: "
         f"{', '.join(harmonization['platforms']) if isinstance(harmonization.get('platforms'), list) else harmonization.get('platforms', 'n/a')}.",
         "Boundaries: geoBoundaries ADM1 (CC BY-SA 2.0), simplified; region totals near borders are approximate.",

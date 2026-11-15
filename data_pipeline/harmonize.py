@@ -24,8 +24,10 @@ from . import atomic
 from .regions import COUNTRY_NAME, DEFAULT_ADM1, GhanaRegions
 
 HARMONIZATION_VERSION = "A-0.1"
-# Constant overpass opportunity across 2012-2025: NOAA-20 (2018) and NOAA-21
-# (2023) add overpasses that would raise counts without any change in fire.
+# The "steady set": the satellites that observed for the whole record (Terra and Aqua from 2002, Suomi-NPP from 2012).
+# TerraGuard uses ALL satellites by default (more satellites, more chances to see a fire), but NOAA-20 (from 2018) and
+# NOAA-21 (from 2023) add overpasses that raise counts without any change in fire. Every cell-day therefore also
+# carries its steady-set count, so a like-for-like view across years stays available.
 STABLE_PLATFORMS = ("Terra", "Aqua", "Suomi-NPP")
 CONFIDENCE_RANK = {"low": 0, "nominal": 1, "high": 2}
 KM_PER_DEG_LAT = 110.574
@@ -75,23 +77,27 @@ def sensor_cell_days(frame: pd.DataFrame, cell_size_km: float = 1.0) -> pd.DataF
     """Aggregate to one row per (UTC day, cell, sensor), keeping detection counts."""
     cells = assign_cells(frame, cell_size_km)
     cells["date"] = cells["acq_datetime"].dt.floor("D")
+    cells["steady"] = cells["platform"].isin(STABLE_PLATFORMS) if "platform" in cells else True
     return (
         cells.groupby(["date", "grid_x", "grid_y", "sensor"], observed=True)
-        .agg(detections=("acq_datetime", "size"), frp_sum=("frp", "sum"))
+        .agg(detections=("acq_datetime", "size"), steady_detections=("steady", "sum"), frp_sum=("frp", "sum"))
         .reset_index()
     )
 
 
 def harmonized_cell_days(sensor_days: pd.DataFrame) -> pd.DataFrame:
     """One row per occupied (day, cell) with per-sensor counts and provenance."""
-    wide = sensor_days.pivot_table(
-        index=["date", "grid_x", "grid_y"], columns="sensor",
-        values="detections", aggfunc="sum", fill_value=0,
-    )
+    index = ["date", "grid_x", "grid_y"]
+    wide = sensor_days.pivot_table(index=index, columns="sensor", values="detections", aggfunc="sum", fill_value=0)
     for sensor in ("MODIS", "VIIRS"):
         if sensor not in wide:
             wide[sensor] = 0
-    wide = wide[["MODIS", "VIIRS"]].rename(
+    if "steady_detections" in sensor_days:
+        steady = sensor_days.pivot_table(index=index, columns="sensor", values="steady_detections", aggfunc="sum", fill_value=0)
+        wide["viirs_steady_detections"] = steady["VIIRS"].reindex(wide.index).fillna(0).astype("int64") if "VIIRS" in steady else 0
+    else:
+        wide["viirs_steady_detections"] = wide["VIIRS"]
+    wide = wide[["MODIS", "VIIRS", "viirs_steady_detections"]].rename(
         columns={"MODIS": "modis_detections", "VIIRS": "viirs_detections"}
     ).reset_index()
     wide.columns.name = None
@@ -117,7 +123,14 @@ def _monthly_core(
     frame["is_both"] = frame["occupied_by"] == "both"
     frame["is_modis_only"] = frame["occupied_by"] == "MODIS_only"
     frame["is_viirs_only"] = frame["occupied_by"] == "VIIRS_only"
+    if "viirs_steady_detections" not in frame:
+        frame["viirs_steady_detections"] = frame["viirs_detections"]
+    frame["is_steady"] = (frame["modis_detections"] > 0) | (frame["viirs_steady_detections"] > 0)
+    frame["is_viirs_steady"] = frame["viirs_steady_detections"] > 0
     monthly = frame.groupby("month").agg(
+        viirs_steady_cell_days=("is_viirs_steady", "sum"),
+        steady_cell_days=("is_steady", "sum"),
+        viirs_steady_detections=("viirs_steady_detections", "sum"),
         active_cell_days=("occupied_by", "size"),
         both_cell_days=("is_both", "sum"),
         modis_only_cell_days=("is_modis_only", "sum"),
@@ -145,6 +158,11 @@ def _monthly_core(
     return monthly
 
 
+# Aqua began delivering active-fire data in July 2002, so August 2002 is the first
+# full month with both MODIS satellites. Earlier months have Terra only (about half
+# the overpasses) and are not comparable with later years.
+AQUA_FIRST_FULL_MONTH = pd.Timestamp("2002-08-01")
+
 PRODUCT_FOR_PLATFORM = {
     "Terra": "MODIS_SP", "Aqua": "MODIS_SP", "Suomi-NPP": "VIIRS_SNPP_SP",
     "NOAA-20": "VIIRS_NOAA20_SP", "NOAA-21": "VIIRS_NOAA21_SP",
@@ -167,7 +185,8 @@ def archive_coverage(
         PRODUCT_FOR_PLATFORM[p] for p in platforms
     }
 
-    def complete(group: str, month: pd.Timestamp) -> bool:
+    def status(group: str, month: pd.Timestamp) -> tuple[int, bool]:
+        """(products that already existed by month end, all of them cover the month)."""
         start, end = month, month + pd.offsets.MonthEnd(0)
         available, ok = 0, True
         for product in chosen:
@@ -178,19 +197,26 @@ def archive_coverage(
                 continue  # product did not exist yet
             available += 1
             ok &= any(a <= start and b >= end for a, b in ranges)
-        return bool(available and ok)
+        return available, bool(available and ok)
 
     unique = pd.Series(months.unique())
     table = pd.DataFrame({"month": unique})
-    table["modis_archive_ok"] = [complete("MODIS", m) for m in unique]
-    table["viirs_archive_ok"] = [complete("VIIRS", m) for m in unique]
+    modis = [status("MODIS", m) for m in unique]
+    viirs = [status("VIIRS", m) for m in unique]
+    modis_has_aqua = platforms is None or "Aqua" in platforms
+    table["modis_terra_only"] = [bool(modis_has_aqua and m < AQUA_FIRST_FULL_MONTH) for m in unique]
+    table["modis_archive_ok"] = [ok and not terra_only for (_, ok), terra_only in zip(modis, table["modis_terra_only"])]
+    table["viirs_archive_ok"] = [ok for _, ok in viirs]
+    # Before VIIRS existed there is nothing to be missing: those months are complete
+    # for the harmonized series (MODIS only, later bridged), not gaps.
+    table["viirs_expected"] = [available > 0 for available, _ in viirs]
     return table.set_index("month")
 
 
 COUNT_COLUMNS = [
     "active_cell_days", "both_cell_days", "modis_only_cell_days", "viirs_only_cell_days",
     "modis_detections", "viirs_detections", "modis_days_with_records", "viirs_days_with_records",
-    "modis_cell_days", "viirs_cell_days",
+    "modis_cell_days", "viirs_cell_days", "steady_cell_days", "viirs_steady_detections", "viirs_steady_cell_days",
 ]
 
 
@@ -234,8 +260,9 @@ def monthly_summary(
     *,
     min_coverage: float = 0.8,
     archive: pd.DataFrame | None = None,
+    national_name: str = COUNTRY_NAME,
 ) -> pd.DataFrame:
-    """Monthly summary for all of Ghana plus each region when ``region`` exists.
+    """Monthly summary for the whole area (``national_name``, Ghana by default) plus each region when ``region`` exists.
 
     With ``archive`` (from :func:`archive_coverage`) a month is complete when both
     sensors' archives cover it. Without it, the weaker days-with-records rule is
@@ -245,13 +272,19 @@ def monthly_summary(
     if archive is not None:
         national["modis_archive_ok"] = national["month"].map(archive["modis_archive_ok"]).fillna(False).astype(bool)
         national["viirs_archive_ok"] = national["month"].map(archive["viirs_archive_ok"]).fillna(False).astype(bool)
-        national["coverage_ok"] = national["modis_archive_ok"] & national["viirs_archive_ok"]
-    national.insert(0, "region", COUNTRY_NAME)
+        national["modis_terra_only"] = national["month"].map(archive["modis_terra_only"]).fillna(False).astype(bool)
+        national["viirs_expected"] = national["month"].map(archive["viirs_expected"]).fillna(True).astype(bool)
+        # Complete for the harmonized series: MODIS archive complete, and VIIRS complete
+        # whenever VIIRS existed. ``overlap_ok`` = both sensors genuinely observed the month.
+        national["overlap_ok"] = national["modis_archive_ok"] & national["viirs_archive_ok"]
+        national["coverage_ok"] = national["modis_archive_ok"] & (national["viirs_archive_ok"] | ~national["viirs_expected"])
+    national.insert(0, "region", national_name)
     parts = [national]
     # Coverage is judged NATIONALLY: a quiet region legitimately has days with
     # no detections, which says nothing about whether satellites observed it.
     coverage_columns = [c for c in ["modis_days_with_records", "viirs_days_with_records", "days_in_month",
-                                    "modis_archive_ok", "viirs_archive_ok", "coverage_ok"] if c in national]
+                                    "modis_archive_ok", "viirs_archive_ok", "coverage_ok", "overlap_ok",
+                                    "viirs_expected", "modis_terra_only"] if c in national]
     national_coverage = national.set_index("month")[coverage_columns]
     if "region" in cell_days:
         for name, group in cell_days.groupby("region", sort=True):
@@ -268,7 +301,7 @@ def harmonize(
     output_dir: Path,
     *,
     cell_sizes_km: tuple[float, ...] = (1.0, 2.0, 5.0),
-    platforms: tuple[str, ...] | None = STABLE_PLATFORMS,
+    platforms: tuple[str, ...] | None = None,
     min_confidence: str | None = None,
     vegetation_only: bool = False,
     min_coverage: float = 0.8,
