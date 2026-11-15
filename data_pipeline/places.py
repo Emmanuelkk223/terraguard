@@ -29,32 +29,52 @@ ALIASES = {  # other common ways to write a country
 }
 
 
+def _flags(result: pd.Series) -> np.ndarray:
+    """A yes/no mask as a plain numpy array (text searches on Arrow-backed columns return nullable booleans)."""
+    return result.to_numpy(dtype=bool, na_value=False)
+
+
 class Gazetteer:
     """In-memory place index. Build once, search many times."""
 
     def __init__(self, table: pd.DataFrame) -> None:
-        self.table = table.reset_index(drop=True)
-        self.norm = self.table["norm"].fillna("").astype(str)
-        alt = self.table["alt_norm"].fillna("").astype(str)
+        table = table.reset_index(drop=True)
+        self.table = table
+        text = lambda column: self.table[column].astype("string[pyarrow]").fillna("")  # noqa: E731
+        self.norm = text("norm")
+        alt = text("alt_norm")
+        kind, code_column = text("kind"), text("country_code")
         for alias, code in ALIASES.items():  # 'ivory coast' must find Côte d'Ivoire the country
-            is_country = (self.table["kind"] == "country") & (self.table["country_code"] == code)
+            is_country = ((kind == "country") & (code_column == code)).to_numpy(dtype=bool, na_value=False)
             alt = alt.where(~is_country, alt + " " + alias)
-        self.alt = " " + alt + " "
+        self.alt = (" " + alt + " ").astype("string[pyarrow]")
         self._cache: dict[tuple, list[dict]] = {}
-        self.names = (" " + self.norm + " ")
-        countries = self.table[self.table["kind"] == "country"]
+        self.names = (" " + self.norm + " ").astype("string[pyarrow]")
+        country_rows = (kind == "country").to_numpy(dtype=bool, na_value=False)
+        countries = pd.DataFrame({"norm": self.norm[country_rows].astype(str), "country_code": code_column[country_rows].astype(str)})
         self.country_names = {row.norm: row.country_code for row in countries.itertuples()}
         self.country_names.update(ALIASES)
-        self.iso2 = {code.lower() for code in countries["country_code"]}
+        self.iso2 = {str(code).lower() for code in countries["country_code"]}
         self.rank = self.table["seat_rank"].fillna(0).to_numpy(float)
         self.population = self.table["population"].fillna(0).to_numpy(float)
-        self.length = self.norm.str.len().to_numpy(float)
-        self.codes = self.table["country_code"].to_numpy()
-        self.kinds = self.table["kind"].to_numpy()
+        self.length = self.norm.str.len().to_numpy(dtype=float, na_value=0.0)
+        self.codes = code_column.to_numpy(dtype=object)
+        self.kinds = kind.to_numpy(dtype=object)
+        # Memory: the search runs on the padded copies (self.names, self.alt) and the numeric arrays above, so the
+        # normalised text columns are dropped; repeated labels become categories and long names Arrow strings.
+        del self.norm
+        table = table.drop(columns=[c for c in ("norm", "alt_norm") if c in table])
+        for column in ("kind", "country", "country_code", "feature_code", "ghana_region", "admin1"):
+            if column in table:
+                table[column] = table[column].astype("category")
+        if "name" in table:
+            table["name"] = table["name"].astype("string[pyarrow]")
+        self.table = table
 
     @classmethod
     def load(cls, path: str | Path) -> "Gazetteer":
-        return cls(pd.read_parquet(path))
+        # Arrow-backed text keeps 192,000 places in a few tens of MB instead of building a Python string for every cell.
+        return cls(pd.read_parquet(path, dtype_backend="pyarrow"))
 
     def _split_country(self, query: str) -> tuple[str, str | None]:
         """('kumasi ghana') -> ('kumasi', 'GH'); the country must be the trailing words of the query."""
@@ -86,22 +106,22 @@ class Gazetteer:
         pool = np.ones(len(self.table), dtype=bool) if country is None else self.codes == country
         names, alt = self.names[pool], self.alt[pool]
         needle = " " + text
-        exact = (names == f" {text} ").to_numpy()
-        starts = names.str.startswith(needle, na=False).to_numpy()
-        word = names.str.contains(needle, regex=False).to_numpy()
+        exact = _flags(names == f" {text} ")
+        starts = _flags(names.str.startswith(needle))
+        word = _flags(names.str.contains(needle, regex=False))
         # The remaining scans are slower; they only matter when strong matches are scarce.
         none = np.zeros(len(names), dtype=bool)
         alt_exact = alt_word = inside = all_tokens = none
         if (exact | starts | word).sum() < MAX_RESULTS * 2:
-            alt_exact = alt.str.contains(f" {text} ", regex=False).to_numpy()
-            alt_word = alt.str.contains(needle, regex=False).to_numpy()
-            inside = names.str.contains(text, regex=False).to_numpy()
+            alt_exact = _flags(alt.str.contains(f" {text} ", regex=False))
+            alt_word = _flags(alt.str.contains(needle, regex=False))
+            inside = _flags(names.str.contains(text, regex=False))
             tokens = text.split()
             if len(tokens) > 1:
                 both = names + alt
                 all_tokens = np.ones(len(names), dtype=bool)
                 for token in tokens:
-                    all_tokens &= both.str.contains(token, regex=False).to_numpy()
+                    all_tokens &= _flags(both.str.contains(token, regex=False))
 
         score = np.select(
             [exact, starts, alt_exact, word, alt_word, inside, all_tokens], [1000, 800, 700, 600, 450, 300, 250], default=0

@@ -282,13 +282,14 @@ Place search ships with a prepared gazetteer in `data/reference/`. To rebuild it
 
 | Page | What it is for |
 |---|---|
+| **Start here** | the landing page: who it is for, four steps to start, what you can and cannot get, and tips for getting the most out of it |
 | **Overview** | headline numbers, yearly totals, and the latest 30 days compared with earlier years |
 | **Burning calendar** | the month-by-year calendar, a period picker, the map, daily or weekly activity, and downloads |
 | **Historical analysis** | burning season, year-by-year comparison, regional comparison |
 | **Sensor harmonization** | MODIS against VIIRS, orbit drift, the check on the estimated years, sensitivity analysis |
 | **Unusual activity** | months flagged as unusually high or low, each with its reason and cross-sensor corroboration |
 | **Data and downloads** | data-quality summary, CSV files, reports |
-| **Methodology** | the method, its limits and credits |
+| **Methodology** | every formula, constant and decision with its reason, a calculator that recomputes any month in your browser, the column glossary, limits and credits |
 
 Controls in the header: **Find a place** (type a town, city or country, or **latitude, longitude** such as `6.69, -1.62`; choose a 10, 25 or 50 km
 area), **Area** (Ghana first, then its regions, then West Africa and its countries), **Sensor view** (all satellites, the steady set Terra, Aqua and Suomi-NPP, MODIS only, or VIIRS only) and **Grid** (1, 2 or 5 km;
@@ -379,6 +380,12 @@ curl -o hotspots.csv "http://localhost:8000/api/export/hotspots.csv?start=2025-1
 Individual-hotspot downloads are limited to 300,000 rows; choose a shorter period or a smaller area for more.
 
 ---
+
+## Hosting it for free
+
+[DEPLOYMENT.md](DEPLOYMENT.md) explains how to put TerraGuard online with no cost and no login for visitors: one Docker container on Render's free plan serves the
+website and the API, with the processed data packed by `deploy/make_bundle.py` and downloaded from a GitHub release. The container was tested under the free
+plan's limits (512 MB of memory, half a CPU): peak memory about 300 MB. Individual-hotspot downloads on the hosted copy cover Ghana only.
 
 ## Tests
 

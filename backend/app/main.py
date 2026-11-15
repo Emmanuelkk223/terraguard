@@ -7,6 +7,7 @@ acquires data, reruns analysis, or merges sensor records.
 from __future__ import annotations
 
 import json
+import os
 import math
 from datetime import date
 from pathlib import Path
@@ -15,6 +16,8 @@ from typing import Any, Literal
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from backend.app.harmonized_routes import register as register_harmonized_routes
 from backend.app.places_routes import register as register_places_routes
@@ -251,8 +254,14 @@ def create_app(root: Path | str = REPO_ROOT) -> FastAPI:
         allow_methods=["GET"],
         allow_headers=["*"],
     )
+    app.add_middleware(GZipMiddleware, minimum_size=1000)  # JSON compresses well; saves bandwidth on small hosts
     register_harmonized_routes(app, store, _jsonable)
     register_places_routes(app, store)
+
+    # One process serves the API and, when it has been built, the website (frontend/dist). Mounted last so /api/* wins.
+    site = Path(os.environ.get("TERRAGUARD_SITE", Path(root) / "frontend" / "dist"))
+    if site.is_dir():
+        app.mount("/", StaticFiles(directory=site, html=True), name="site")
     return app
 
 

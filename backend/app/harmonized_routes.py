@@ -11,7 +11,14 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Literal
 
+import ctypes
+import gc
+import threading
+
+import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.dataset as ds
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import Response
 
@@ -20,7 +27,7 @@ from data_pipeline.area_analytics import (
 )
 from data_pipeline.calendar_analytics import annual_summary, seasonal_summary
 from data_pipeline.countries import DEFAULT_BOUNDARIES, NAME_BY_ISO3, ORDER as WA_COUNTRY_ORDER, REGION_NAME as WA_NAME, ROLE_BY_NAME, country_bounds
-from data_pipeline.harmonize import cell_centres
+from data_pipeline.harmonize import KM_PER_DEG_LAT, KM_PER_DEG_LON_EQUATOR, REFERENCE_LATITUDE, cell_centres
 from data_pipeline.report import build_blocks, to_html, to_markdown
 
 from backend.app.hotspot_routes import register as register_hotspot_routes
@@ -96,8 +103,55 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
             frame = frame[frame["year"] <= end_year]
         return frame
 
-    def cell_days_table(grid: str, scope: str = "ghana") -> pd.DataFrame:
-        return store.parquet(f"{prefix(scope)}harmonized/cell_days_{grid}.parquet")
+    heavy = threading.BoundedSemaphore(2)  # a small server holds at most two big reads at once
+
+    def release_memory() -> None:
+        gc.collect()
+        try:
+            pa.default_memory_pool().release_unused()
+            ctypes.CDLL("libc.so.6").malloc_trim(0)  # hand freed memory back to the system (Linux)
+        except Exception:  # not available on this platform
+            pass
+
+    def read_cell_days(grid: str, scope: str = "ghana", *, region: str | None = None,
+                       bbox: tuple[float, float, float, float] | None = None,
+                       ranges: list[tuple[pd.Timestamp, pd.Timestamp]] | None = None,
+                       columns: list[str] | None = None) -> pd.DataFrame:
+        """Only the cell-days a request needs. The West Africa table has ~19 million rows, far too many to hold in a small server."""
+        path = store.base / f"{prefix(scope)}harmonized/cell_days_{grid}.parquet"
+        by_place = path.with_name(path.stem + "_by_place.parquet")
+        if ranges is None and bbox is not None and by_place.is_file():
+            path = by_place  # an area over all years: the copy sorted by place reads only that area's blocks
+        if not path.is_file():
+            raise HTTPException(503, f"Analytical dataset '{prefix(scope)}harmonized/cell_days_{grid}.parquet' is not available")
+        expression = None
+
+        def both(extra):
+            nonlocal expression
+            expression = extra if expression is None else expression & extra
+
+        if region and region != national_name(scope):
+            both(ds.field("region") == region)
+        if bbox is not None:  # a coarse prefilter by grid index; the exact cell-centre test follows in select_cells
+            west, south, east, north = bbox
+            kx = KM_PER_DEG_LON_EQUATOR * np.cos(np.radians(REFERENCE_LATITUDE))
+            size = GRID_KM[grid]
+            both((ds.field("grid_x") >= int(np.floor(west * kx / size)) - 1) & (ds.field("grid_x") <= int(np.floor(east * kx / size)) + 1)
+                 & (ds.field("grid_y") >= int(np.floor(south * KM_PER_DEG_LAT / size)) - 1)
+                 & (ds.field("grid_y") <= int(np.floor(north * KM_PER_DEG_LAT / size)) + 1))
+        if ranges:
+            window = None
+            for first, last in ranges:
+                one = (ds.field("date") >= first.to_datetime64()) & (ds.field("date") <= last.to_datetime64())
+                window = one if window is None else window | one
+            both(window)
+        try:
+            with heavy:
+                frame = ds.dataset(path).to_table(filter=expression, columns=columns).to_pandas()
+            release_memory()
+            return frame
+        except Exception as exc:  # being rewritten: retryable
+            raise HTTPException(503, "Analytical data could not be read; it may be updating. Retry in a moment.") from exc
 
     def national_monthly(grid: str, scope: str = "ghana") -> pd.DataFrame:
         return store.csv(f"{prefix(scope)}harmonized/monthly_{grid}.csv")
@@ -116,7 +170,7 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
                 cache.pop(next(iter(cache)))
             try:
                 cache[key] = area_calendar(
-                    cell_days_table(grid, scope), GRID_KM[grid], national_monthly(grid, scope),
+                    read_cell_days(grid, scope, region=None if bbox else region, bbox=bbox), GRID_KM[grid], national_monthly(grid, scope),
                     view=sensor, region=None if bbox else region, bbox=bbox, national_name=national_name(scope),
                 )
             except ValueError as exc:
@@ -327,14 +381,8 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
                         bbox_text: str | None) -> pd.DataFrame:
         scope = scope_for(region, bbox_text)
         check_grid(grid, scope)
-        path = f"{prefix(scope)}harmonized/cell_days_{grid}.parquet"
-        if not store.exists(path):
-            raise HTTPException(503, f"Analytical dataset '{path}' is not available")
-        try:
-            frame = pd.read_parquet(store.base / path, filters=[("date", ">=", first), ("date", "<=", last)])
-        except Exception as exc:  # being rewritten or corrupt: a retryable condition, not a server crash
-            raise HTTPException(503, f"Analytical dataset '{path}' could not be read; it may be updating. Retry in a moment.") from exc
         bbox = parsed_bbox(bbox_text)
+        frame = read_cell_days(grid, scope, region=None if bbox else region, bbox=bbox, ranges=[(first, last)])
         if bbox is None:
             check_region(grid, region, scope)
         return select_cells(frame, GRID_KM[grid], region=None if bbox else region, bbox=bbox, national=national_name(scope))
@@ -486,7 +534,7 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
                              "interval": interval, "period": f"{first.date()} to {last.date()}"})
 
     register_hotspot_routes(app, store, jsonable, {
-        "parsed_bbox": parsed_bbox, "check_region": check_region, "cell_days_table": cell_days_table,
+        "parsed_bbox": parsed_bbox, "check_region": check_region, "read_cell_days": read_cell_days,
         "calendar_frame": calendar_frame, "area_label": area_label, "scope_for": scope_for,
         "national_name": national_name, "check_grid": check_grid,
     })

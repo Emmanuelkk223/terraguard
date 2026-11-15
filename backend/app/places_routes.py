@@ -5,7 +5,10 @@ Runs entirely on a local gazetteer (GeoNames, CC BY 4.0), so what a user types i
 
 from __future__ import annotations
 
+import gc
 from typing import Any
+
+import pyarrow as pa
 
 from fastapi import FastAPI, HTTPException, Query
 
@@ -25,6 +28,8 @@ def register(app: FastAPI, store: Any) -> None:
         if holder.get("stamp") != stamp:
             try:
                 holder["gazetteer"], holder["stamp"] = Gazetteer.load(path), stamp
+                gc.collect()
+                pa.default_memory_pool().release_unused()  # hand the loading buffers back: small servers have little memory
             except Exception as exc:  # unreadable or mid-write
                 raise HTTPException(503, "The place gazetteer could not be read; it may be updating. Retry in a moment.") from exc
         return holder["gazetteer"]

@@ -1,0 +1,10 @@
+# Render blueprint: one free web service built from the Dockerfile.
+services:
+  - type: web
+    name: terraguard
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATA_URL
+        sync: false   # paste the address of terraguard-data.tar.gz in the Render dashboard

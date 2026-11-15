@@ -3,6 +3,7 @@ import { api, ApiError } from "./services/api";
 import type {
   AnnualRow, AreaGroup, AreaQuery, CalRow, Grid, HarmonizationMeta, Place, SeasonalRow, Selection, Sensor, Validation,
 } from "./types";
+import Landing, { type GoTarget } from "./pages/Landing";
 import Overview from "./pages/Overview";
 import CalendarPage from "./pages/CalendarPage";
 import HistoricalPage from "./pages/HistoricalPage";
@@ -15,6 +16,7 @@ import PlaceSearch from "./components/PlaceSearch";
 import { boxAround, boxToString, DEFAULT_RADIUS_KM, type Focus } from "./services/places";
 
 const TABS = [
+  ["start", "Start here"],
   ["overview", "Overview"],
   ["calendar", "Burning calendar"],
   ["historical", "Historical analysis"],
@@ -45,7 +47,7 @@ const SENSOR_LABEL: Record<Sensor, string> = {
 };
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("start");
   const [grid, setGrid] = useState<Grid>("5km");
   const [region, setRegion] = useState("Ghana");
   const [bbox, setBbox] = useState<string | null>(null);
@@ -213,6 +215,17 @@ export default function App() {
     };
   }, [q, sensor, attempt]);
 
+  // Jumps from the "Start here" page; the audience cards can also switch to the like-for-like view.
+  const goTo = (target: GoTarget, options?: { steady?: boolean }) => {
+    if (options?.steady) setSensor("steady");
+    setTab(target);
+    window.scrollTo({ top: 0 });
+  };
+  const focusSearch = () => {
+    window.scrollTo({ top: 0 });
+    document.querySelector<HTMLInputElement>(".search-input")?.focus();
+  };
+
   const openFromAnomaly = (s: Selection) => {
     setSelection(s);
     setTab("calendar");
@@ -288,13 +301,14 @@ export default function App() {
         </p>
       )}
       <main>
-        {loading && (rows.length ? <span className="updating" role="status">Updating…</span> : <p className="muted">Loading…</p>)}
-        {error && (
+        {tab !== "start" && loading && (rows.length ? <span className="updating" role="status">Updating…</span> : <p className="muted">Loading…</p>)}
+        {tab !== "start" && error && (
           <p className="error" role="alert">
             {error}{" "}
             <button type="button" className="tool" onClick={() => { retries.current = 0; setAttempt((n) => n + 1); }}>Retry</button>
           </p>
         )}
+        {tab === "start" && <Landing onGo={goTo} onSearch={focusSearch} />}
         {ready && tab === "overview" && <Overview rows={rows} annual={annual} region={heading} q={q} onOpenCalendar={() => setTab("calendar")} />}
         {ready && tab === "calendar" && (
           <CalendarPage rows={rows} q={q} heading={heading} selection={selection} onSelect={setSelection} onBbox={setBboxManually} focus={focus} outsideGhana={outsideGhana} />
@@ -306,7 +320,7 @@ export default function App() {
         {ready && tab === "sensors" && <SensorsPage rows={rowsBoth} meta={meta} validation={validation} grid={grid} region={areaName} />}
         {ready && tab === "anomalies" && <AnomaliesPage rows={anomalies} region={heading} area={bbox ? "Custom area" : region} onOpen={openFromAnomaly} />}
         {ready && tab === "data" && <DataPage q={q} meta={meta} />}
-        {tab === "method" && <MethodologyPage />}
+        {tab === "method" && <MethodologyPage rows={rows} selection={selection} area={heading} />}
       </main>
       <footer>
         Satellite detections are not unique fires and are not an emergency alert. Data: NASA FIRMS (MODIS and VIIRS), NASA POWER. Built with AI assistance (see README). Descriptions of unusual activity refer to history, not predictions.

@@ -344,3 +344,49 @@ input[type="range"] { width: min(420px, 100%); accent-color: var(--amber); }
 
 .join { margin-left: 4px; font-size: .58rem; font-weight: 700; color: var(--amber); letter-spacing: .02em; }
 .constellation { margin: 10px 0 0; font-size: .78rem; line-height: 1.45; }
+
+/* ---- landing page ("Start here") ---- */
+.landing { max-width: 1100px; }
+.land-hero { border: 1px solid var(--line-strong); background: linear-gradient(120deg, var(--panel) 0%, #10243a 100%); padding: 28px 30px; border-left: 4px solid var(--amber); }
+.land-hero h2 { font-size: 2rem; line-height: 1.2; margin: 6px 0 12px; max-width: 24ch; }
+.land-lead { font-size: 1.05rem; line-height: 1.55; max-width: 70ch; color: var(--text); margin: 0 0 18px; }
+.land-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+.land-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; list-style: none; padding: 0; margin: 0; }
+.land-facts li { border: 1px solid var(--line); background: rgba(7, 16, 26, .55); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.land-facts b { color: var(--amber); font-size: 1rem; } .land-facts span { color: var(--muted); font-size: .8rem; }
+.aud-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 14px; margin-top: 14px; }
+.aud-card { background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--green); padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 8px; }
+.aud-card:nth-child(2) { border-top-color: var(--amber); } .aud-card:nth-child(3) { border-top-color: #4cc0b3; } .aud-card:nth-child(4) { border-top-color: #ea7a2b; }
+.aud-card h4 { margin: 0; font-size: 1.05rem; }
+.aud-q { margin: 0; font-style: italic; color: var(--amber); }
+.aud-card ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: .9rem; }
+.aud-card p { margin: 0; font-size: .9rem; line-height: 1.45; }
+.aud-not { color: var(--muted); }
+.aud-card .tool { align-self: flex-start; margin-top: auto; }
+.land-steps { margin: 14px 0 0; padding-left: 22px; display: grid; gap: 8px; max-width: 90ch; line-height: 1.5; }
+.land-steps code { background: var(--panel-2); padding: 1px 6px; border: 1px solid var(--line); }
+.can-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; margin-top: 14px; }
+.can-card { background: var(--panel); border: 1px solid var(--line); padding: 14px 18px 16px; }
+.can-card h4 { margin: 0 0 8px; font-size: 1rem; }
+.can-card.yes { border-top: 3px solid var(--green); } .can-card.yes h4 { color: #86c99b; }
+.can-card.no { border-top: 3px solid #ea7a2b; } .can-card.no h4 { color: #f0a066; }
+.can-card ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: .9rem; line-height: 1.45; }
+.tip-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; margin-top: 14px; }
+.tip-card { background: var(--panel); border: 1px solid var(--line); padding: 12px 14px; }
+.tip-card b { color: var(--amber); } .tip-card p { margin: 4px 0 0; font-size: .88rem; line-height: 1.45; }
+.land-foot { margin-top: 22px; color: var(--muted); font-size: .88rem; line-height: 1.5; max-width: 90ch; }
+.table-wrap { overflow-x: auto; }
+
+/* ---- methodology reference ---- */
+.tech { max-width: 1000px; }
+.toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 18px; margin: 14px 0 6px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); }
+.toc a { color: var(--teal); text-decoration: none; font-size: .86rem; padding: 2px 0; } .toc a:hover { text-decoration: underline; }
+.tech h3 { scroll-margin-top: 12px; }
+pre.formula { background: #0a1522; border: 1px solid var(--line); border-left: 3px solid var(--amber); padding: 12px 14px; overflow-x: auto; font-size: .84rem; line-height: 1.6; color: #dfe8f2; font-family: Consolas, "Courier New", monospace; white-space: pre; }
+.tech code { background: var(--panel-2); padding: 1px 5px; border: 1px solid var(--line); font-size: .85em; }
+.worked { background: var(--panel); border: 1px solid var(--line-strong); padding: 14px 16px; margin: 10px 0 16px; }
+.worked-pick { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin-bottom: 10px; }
+.worked-ok { margin: 10px 0 0; color: #86c99b; font-weight: 600; }
+.tech table.table { font-size: .84rem; } .tech .table.narrow { max-width: none; } .tech .table.narrow th { width: auto; }
+
+.calc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin: 14px 0 12px; }

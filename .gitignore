@@ -17,3 +17,6 @@ frontend/dist/
 
 # documentation stays local, not pushed
 docs/
+
+# hosted-deployment data bundle (large, uploaded to a GitHub release instead)
+deploy/*.tar.gz

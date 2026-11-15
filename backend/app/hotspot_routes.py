@@ -68,7 +68,10 @@ def register(app: FastAPI, store: Any, jsonable: Callable, helpers: dict[str, Ca
             except Exception as exc:  # being rewritten: retryable
                 raise HTTPException(503, "Detections could not be read; they may be updating. Retry in a moment.") from exc
             parts.append(frame)
-        frame = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=PRODUCT_COLUMNS)
+        if not parts:
+            raise HTTPException(501, "Individual hotspot downloads are not included in this copy of TerraGuard for this area. "
+                                     "Run TerraGuard yourself with the downloaded NASA data (see the README) to export them.")
+        frame = pd.concat(parts, ignore_index=True)
         frame = frame[frame["sensor"].isin(SENSOR_FILTER[sensor])]
         if sensor == "steady":  # only the satellites that observed for the whole record
             frame = frame[frame["platform"].isin(STABLE_PLATFORMS)]
@@ -160,10 +163,33 @@ def register(app: FastAPI, store: Any, jsonable: Callable, helpers: dict[str, Ca
         if parsed is None:
             helpers["check_region"](grid, region, scope)
         km = {"1km": 1.0, "2km": 2.0, "5km": 5.0}[grid]
-        table = helpers["cell_days_table"](grid, scope)
-        selected = select_cells(table, km, region=None if parsed else region, bbox=parsed, national=helpers["national_name"](scope))
         ends = {"modis": archive_end("MODIS_SP", scope), "viirs": archive_end("VIIRS_SNPP_SP", scope)}
         as_of = min(ends.values()) if sensor in ("harmonized", "steady") else ends[sensor]
+        window_end = as_of
+        month_note = ""
+        if mode == "month":  # the current month so far, against the same dates in every earlier year
+            window_start = as_of.normalize().replace(day=1)
+            if (as_of.normalize() - window_start).days < 6:
+                # Under a week of the new month: too little to compare, so use the last full month instead.
+                window_end = window_start - pd.Timedelta(days=1)
+                window_start = window_end.replace(day=1)
+                month_note = "The new month has under a week of data, so the last full month is compared instead. "
+            window_days = int((window_end.normalize() - window_start).days) + 1
+        else:
+            window_start = as_of - pd.Timedelta(days=window_days - 1)
+        bounds = []
+        for year in range(2002, window_end.year + 1):
+            offset = window_end.year - year
+            first = window_start - pd.DateOffset(years=offset)
+            last = window_end - pd.DateOffset(years=offset)
+            if first >= AQUA_FIRST_FULL_MONTH:
+                bounds.append((year, first, last))
+        # Read only the dates being compared (about 25 windows), not the whole table: the server has little memory.
+        table = helpers["read_cell_days"](
+            grid, scope, region=None if parsed else region, bbox=parsed, ranges=[(f, l) for _, f, l in bounds],
+            columns=["date", "grid_x", "grid_y", "region", "modis_detections", "viirs_detections", "viirs_steady_detections"],
+        )
+        selected = select_cells(table, km, region=None if parsed else region, bbox=parsed, national=helpers["national_name"](scope))
         viirs_steady = selected["viirs_steady_detections"] if "viirs_steady_detections" in selected else selected["viirs_detections"]
         steady_flag = ((selected["modis_detections"] > 0) | (viirs_steady > 0)).to_numpy()
         # Like for like: the combined view is compared on the steady set (Terra, Aqua, Suomi-NPP), so the satellites that
@@ -178,25 +204,8 @@ def register(app: FastAPI, store: Any, jsonable: Callable, helpers: dict[str, Ca
         ratio = calendar.assign(r=np.where(calendar["observed_cell_days"] > 0,
                                            calendar["active_cell_days"] / calendar["observed_cell_days"].clip(lower=1), 1.0)
                                 ).set_index(["year", "month"])["r"] if "observed_cell_days" in calendar else None
-        window_end = as_of
-        month_note = ""
-        if mode == "month":  # the current month so far, against the same dates in every earlier year
-            window_start = as_of.normalize().replace(day=1)
-            if (as_of.normalize() - window_start).days < 6:
-                # Under a week of the new month: too little to compare, so use the last full month instead.
-                window_end = window_start - pd.Timedelta(days=1)
-                window_start = window_end.replace(day=1)
-                month_note = "The new month has under a week of data, so the last full month is compared instead. "
-            window_days = int((window_end.normalize() - window_start).days) + 1
-        else:
-            window_start = as_of - pd.Timedelta(days=window_days - 1)
         history, current = [], None
-        for year in range(2002, window_end.year + 1):
-            offset = window_end.year - year
-            first = window_start - pd.DateOffset(years=offset)
-            last = window_end - pd.DateOffset(years=offset)
-            if first < AQUA_FIRST_FULL_MONTH:
-                continue
+        for year, first, last in bounds:
             value = float(daily[(daily.index >= first) & (daily.index <= last)].sum())
             estimated = False
             if sensor in ("harmonized", "steady") and ratio is not None and year < 2012:

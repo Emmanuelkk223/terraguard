@@ -126,7 +126,7 @@ def test_real_gazetteer_finds_well_known_towns() -> None:
     assert len(real.table) > 100_000 and real.table["country_code"].nunique() == 16
 
 
-def test_search_api_returns_ranked_places_with_coverage(tmp_path: Path, search: Gazetteer) -> None:
+def test_search_api_returns_ranked_places_with_coverage(tmp_path: Path, built: pd.DataFrame) -> None:
     from fastapi.testclient import TestClient
 
     from backend.app.main import create_app
@@ -134,7 +134,7 @@ def test_search_api_returns_ranked_places_with_coverage(tmp_path: Path, search: 
     client = TestClient(create_app(tmp_path))
     assert client.get("/api/places/search", params={"q": "kumasi"}).status_code == 503  # gazetteer not built yet
     (tmp_path / "data" / "reference").mkdir(parents=True)
-    search.table.to_parquet(tmp_path / "data" / "reference" / "west_africa_places.parquet", index=False)
+    built.to_parquet(tmp_path / "data" / "reference" / "west_africa_places.parquet", index=False)
     body = client.get("/api/places/search", params={"q": "Kumasi, Ghana", "limit": 3}).json()
     assert "GH" in body["covered_countries"] and len(body["covered_countries"]) == 16 and body["data"][0]["name"] == "Kumasi" and body["data"][0]["covered"] is True
     assert len(body["data"]) <= 3

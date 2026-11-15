@@ -1,0 +1,4 @@
+# Container scripts must keep Unix line endings, whatever the machine that commits them
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.py text eol=lf
