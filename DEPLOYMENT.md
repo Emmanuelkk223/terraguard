@@ -34,7 +34,7 @@ hosted copy; for other countries the site says so.
 
 1. In Render choose **New**, then **Blueprint**, and select your repository (it reads `render.yaml`).
    Or **New**, then **Web Service**, pick the repo, set **Runtime: Docker**, **Instance type: Free**, and **Health check path: `/api/health`**.
-2. Add the environment variable **`DATA_URL`** with the release address from step 2.
+2. Add the environment variable **`DATA_URL`** with the release address from step 2. (If it is missing or wrong, the container falls back to the `data-v1` release of this repository, so a mistyped setting no longer leaves the site empty.)
 3. Create. The first build takes about 10 to 15 minutes (it builds the website and installs the Python packages).
 4. When it says **Live**, open the address Render gives you (something like `https://terraguard.onrender.com`).
 
