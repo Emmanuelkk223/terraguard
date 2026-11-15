@@ -165,11 +165,15 @@ def register(app: FastAPI, store: Any, jsonable: Callable, helpers: dict[str, Ca
         ends = {"modis": archive_end("MODIS_SP", scope), "viirs": archive_end("VIIRS_SNPP_SP", scope)}
         as_of = min(ends.values()) if sensor in ("harmonized", "steady") else ends[sensor]
         viirs_steady = selected["viirs_steady_detections"] if "viirs_steady_detections" in selected else selected["viirs_detections"]
-        flag = {"harmonized": np.ones(len(selected), dtype=bool),
-                "steady": ((selected["modis_detections"] > 0) | (viirs_steady > 0)).to_numpy(),
+        steady_flag = ((selected["modis_detections"] > 0) | (viirs_steady > 0)).to_numpy()
+        # Like for like: the combined view is compared on the steady set (Terra, Aqua, Suomi-NPP), so the satellites that
+        # joined in 2018 and 2023 cannot make the present look busier than the past. The all-satellite count is reported too.
+        flag = {"harmonized": steady_flag,
+                "steady": steady_flag,
                 "modis": (selected["modis_detections"] > 0).to_numpy(),
-                "viirs": (selected["viirs_detections"] > 0).to_numpy()}[sensor]
+                "viirs": (viirs_steady > 0).to_numpy()}[sensor]  # VIIRS alone: Suomi-NPP, present for the whole record
         daily = selected.loc[flag].groupby("date").size()
+        daily_all = selected.groupby("date").size()
         calendar = helpers["calendar_frame"](grid, region, sensor, bbox)
         ratio = calendar.assign(r=np.where(calendar["observed_cell_days"] > 0,
                                            calendar["active_cell_days"] / calendar["observed_cell_days"].clip(lower=1), 1.0)
@@ -201,6 +205,7 @@ def register(app: FastAPI, store: Any, jsonable: Callable, helpers: dict[str, Ca
             row = {"year": year, "value": round(value), "estimated": estimated,
                    "window_start": first.date().isoformat(), "window_end": last.date().isoformat()}
             if year == window_end.year:
+                row["all_satellites_value"] = int(daily_all[(daily_all.index >= first) & (daily_all.index <= last)].sum())
                 current = row
             else:
                 history.append(row)
@@ -210,12 +215,12 @@ def register(app: FastAPI, store: Any, jsonable: Callable, helpers: dict[str, Ca
         median = float(np.median(values))
         rank = int((values > current["value"]).sum()) + 1
         return {
-            "as_of": as_of.date().isoformat(), "window_days": window_days, "mode": mode, "window_label": ("The last full month" if month_note else "This month so far") if mode == "month" else None, "area": helpers["area_label"](region, bbox),
+            "as_of": as_of.date().isoformat(), "window_days": window_days, "mode": mode, "basis": "steady set" if sensor in ("harmonized", "steady") else "sensor view", "window_label": ("The last full month" if month_note else "This month so far") if mode == "month" else None, "area": helpers["area_label"](region, bbox),
             "sensor": sensor, "grid": grid, "current": current, "history": history,
             "median": round(median), "pct_diff_from_median": None if median == 0 else round((current["value"] / median - 1) * 100, 1),
             "rank_among_years": rank, "years_compared": len(history) + 1,
             "percentile": round(float((values < current["value"]).mean() * 100), 1),
-            "note": (month_note + "Active cell-days in the latest window against the same calendar dates in earlier years. "
+            "note": (month_note + "Active cell-days in the latest window against the same calendar dates in earlier years" + (", counted on the steady set (Terra, Aqua, Suomi-NPP) so satellites that joined later do not inflate the present. " if sensor in ("harmonized", "steady") else ". ") + " "
                      "Recent days come from near-real-time data and may be revised. "
                      + ("Years before 2012 had MODIS only; they are scaled to the combined scale with that month's bridge ratio, "
                         "an approximation." if sensor == "harmonized" else "")).strip(),

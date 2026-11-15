@@ -56,7 +56,7 @@ function Body({ data }: { data: Comparison }) {
   return (
     <>
       <p className="current-line">
-        <b>{data.mode === "month" && data.window_label ? `${data.window_label}, ` : ""}{longDate(data.current.window_start)} to {longDate(data.as_of)}</b> had <b>{fmt(data.current.value)}</b> active cell-days in {data.area}
+        <b>{data.mode === "month" && data.window_label ? `${data.window_label}, ` : ""}{longDate(data.current.window_start)} to {longDate(data.as_of)}</b> had <b>{fmt(data.current.value)}</b> active cell-days{data.basis === "steady set" ? " (steady set" + (data.current.all_satellites_value && data.current.all_satellites_value !== data.current.value ? `; ${fmt(data.current.all_satellites_value)} counting every satellite` : "") + ")" : ""} in {data.area}
         {diff === null ? "." : <>, <b>{Math.abs(diff).toFixed(0)}% {direction}</b> the typical {fmt(data.median)} for the same dates in {data.history.length} earlier years.</>}{" "}
         That ranks {ordinal(data.rank_among_years)} highest of {data.years_compared} years.
       </p>

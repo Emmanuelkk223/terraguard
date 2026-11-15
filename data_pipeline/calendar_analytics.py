@@ -202,8 +202,17 @@ def seasonal_summary(cal: pd.DataFrame) -> pd.DataFrame:
 def run(monthly_csv: Path, output_dir: Path, *, min_samples: int = 5,
         threshold: float | None = DEFAULT_THRESHOLD) -> dict[str, object]:
     label = monthly_csv.stem.removeprefix("monthly_")
-    cal = build_calendar(pd.read_csv(monthly_csv), min_samples=min_samples, threshold=threshold)
+    monthly = pd.read_csv(monthly_csv)
+    cal = build_calendar(monthly, min_samples=min_samples, threshold=threshold)
     output_dir.mkdir(parents=True, exist_ok=True)
+    # The other sensor views for every named area, so the dashboard does not have to rebuild them on each request.
+    from .area_analytics import apply_view
+
+    for view in ("steady", "modis", "viirs"):
+        view_monthly = apply_view(monthly.assign(month=pd.to_datetime(monthly["month"])), view)
+        view_monthly["month"] = view_monthly["month"].dt.strftime("%Y-%m-%d")
+        atomic.to_csv(build_calendar(view_monthly, min_samples=min_samples, threshold=threshold).assign(view=view),
+                      output_dir / f"calendar_{view}_{label}.csv", index=False)
     atomic.to_csv(cal, output_dir / f"calendar_{label}.csv", index=False)
     atomic.to_csv(annual_summary(cal), output_dir / f"annual_{label}.csv", index=False)
     atomic.to_csv(seasonal_summary(cal), output_dir / f"seasonal_{label}.csv", index=False)

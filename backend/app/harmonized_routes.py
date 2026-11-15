@@ -133,6 +133,9 @@ def register(app: FastAPI, store: Any, jsonable: Any) -> None:
             if sensor == "harmonized":
                 frame = analytics("calendar", grid, scope)
                 return frame[frame["region"] == region]
+            if store.exists(f"{prefix(scope)}analytics/calendar_{sensor}_{grid}.csv"):  # precomputed for named areas
+                frame = analytics(f"calendar_{sensor}", grid, scope)
+                return frame[frame["region"] == region]
         return on_demand_calendar(grid, region, sensor, bbox, scope)
 
     def area_label(region: str, bbox_text: str | None) -> str:

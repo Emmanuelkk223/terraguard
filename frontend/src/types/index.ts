@@ -287,6 +287,7 @@ export interface CurrentWindow {
   year: number;
   value: number;
   estimated: boolean;
+  all_satellites_value?: number;
   window_start: string;
   window_end: string;
 }
@@ -296,6 +297,7 @@ export interface CurrentComparison {
   window_days: number;
   mode?: "days" | "month";
   window_label?: string | null;
+  basis?: string;
   area: string;
   sensor: Sensor;
   grid: string;

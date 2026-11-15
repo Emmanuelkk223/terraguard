@@ -59,9 +59,9 @@ export default function CalendarPage({ rows, q, heading, selection, onSelect, on
 
   // Rainfall context exists for Ghana and its named regions, not for a custom area.
   useEffect(() => {
-    if (q.bbox) return setRain([]);
+    if (q.bbox || outsideGhana) return setRain([]);
     api.rainfall(q.region).then(setRain).catch(() => setRain([]));
-  }, [q.bbox, q.region]);
+  }, [q.bbox, q.region, outsideGhana]);
 
   // Start with the most recent complete month so the page is never empty.
   useEffect(() => {

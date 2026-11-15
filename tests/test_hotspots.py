@@ -120,3 +120,10 @@ def test_current_comparison_validates_input(client: TestClient) -> None:
     assert client.get("/api/current-comparison", params={"window_days": 3}).status_code == 422
     assert client.get("/api/current-comparison", params={"sensor": "radar"}).status_code == 422
     assert client.get("/api/current-comparison", params={"region": "Atlantis"}).status_code == 422
+
+
+def test_the_combined_comparison_is_made_on_the_steady_set(client: TestClient) -> None:
+    body = client.get("/api/current-comparison", params={"grid": "5km"}).json()
+    assert body["basis"] == "steady set" and "all_satellites_value" in body["current"]
+    assert body["current"]["all_satellites_value"] >= body["current"]["value"]
+    assert client.get("/api/current-comparison", params={"grid": "5km", "sensor": "modis"}).json()["basis"] == "sensor view"
