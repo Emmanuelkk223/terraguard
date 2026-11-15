@@ -52,6 +52,7 @@ one-minute wake-up. A service that never sleeps uses about 744 of Render's 750 f
 ## If something goes wrong
 | Symptom | Cause and fix |
 |---|---|
+| Build log says `not a gzip file`, or "The address did not return the data archive" | `DATA_URL` is not the file's own address. It must contain `/releases/download/` and end in `terraguard-data.tar.gz`; the release page address (`/releases/tag/...`) will not work. The repository must also be public. Test the address in a private window: it should start a 300 MB download immediately. |
 | The page says no processed data is available | `DATA_URL` is missing or wrong. Open the service's **Logs**: look for "downloading the data bundle". Fix the variable and redeploy. |
 | The service restarts or says "out of memory" | The free instance has 512 MB. Avoid many people running very large custom boxes at once, or move to a larger instance. |
 | First visit takes about a minute | The free service was asleep (see above). |

@@ -23,7 +23,8 @@ COPY data/reference data/reference
 COPY --from=web /web/dist frontend/dist
 ARG DATA_URL=""
 ENV DATA_URL=${DATA_URL}
-RUN chmod +x deploy/start.sh && python deploy/fetch_data.py
+# If the data cannot be fetched now, the image still builds and the start-up script tries again, printing why in the logs.
+RUN chmod +x deploy/start.sh && (python deploy/fetch_data.py || echo "WARNING: the data bundle was not fetched during the build; see the message above.")
 ENV PORT=10000
 EXPOSE 10000
 CMD ["sh", "deploy/start.sh"]
