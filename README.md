@@ -56,7 +56,9 @@ and each sensor's own numbers stay visible next to it.
 - **Ghana first, then West Africa**: Ghana (1, 2 and 5 km grids, 16 regions) is the default; Côte d'Ivoire, Togo and Burkina Faso
   come next, then the other twelve countries and a West Africa total (5 km grid, country level).
 - **Any area, any sensor**: a named region or country, a box you draw, a town you search for, or a latitude and longitude you type;
-  the combined series, MODIS only or VIIRS only.
+  all satellites together (the default), the **steady set** (Terra, Aqua and Suomi-NPP only), MODIS only or VIIRS only.
+- **All satellites, compared like with like**: every satellite is counted and shown, but "is this month unusual?" is judged on the steady set, so
+  satellites that joined later cannot raise false alarms (see below).
 - **Right now versus history**: the latest 14, 30 or 60 days, or the month so far, against the same dates in every earlier year.
 - **Hotspots or harmonized**: the calendar can show the raw number of hotspots detected or the harmonized active cell-days, with a choice of
   colour ramps, including one designed for colour-blind readers.
@@ -64,6 +66,15 @@ and each sensor's own numbers stay visible next to it.
   and a PNG of every chart.
 - **Honest checks**: sensor agreement, a comparison with machine learning, sensitivity to analysis choices, a
   back-test of the estimated years, and rainfall shown as context only.
+
+### All satellites, and why unusual months are judged on a steady set
+
+TerraGuard counts **every satellite** (Terra, Aqua, Suomi-NPP, NOAA-20, NOAA-21): more satellites mean more chances to see a fire. But NOAA-20 (from April 2018)
+and NOAA-21 (from March 2023) add overpasses, so counts rise for reasons that have nothing to do with fire: in Ghana, yearly active cell-days are about 21%
+higher in 2018, about 45% higher in 2019 to 2022 and 66 to 77% higher in 2023 to 2025 than the same data from Terra, Aqua and Suomi-NPP alone. Judging history
+on all satellites produced **five false "unusually high" months**. So every cell-day also keeps its steady-set count: the counts, maps and hotspot downloads use all
+satellites, while the comparison with history, the flags, the seasons and the 2002 to 2011 estimate use the **steady set**, and each month's panel shows both numbers.
+The calendar marks the years the satellites joined (+N20, +N21), and the **Sensor view** menu lets you look at the steady set, MODIS or VIIRS alone.
 
 ### One thing to know about 2002 to 2011
 
@@ -109,7 +120,7 @@ sent to another service.
 | **Node.js 20 or newer** | check with `node --version` |
 | **Git** | to clone the repository |
 | **A free NASA FIRMS MAP_KEY** | request one at https://firms.modaps.eosdis.nasa.gov/api/map_key/ (it arrives by email) |
-| **About 1.5 GB free disk** and **a few hours** for the first download | the data is not stored in the repository |
+| **About 2 GB free disk** for Ghana, or **about 10 GB** with all of West Africa, and **a few hours** for the first download | the data is not stored in the repository |
 
 > **Important:** the repository contains the code and small reference files only. The fire data (about 650 MB
 > raw, 200 MB processed) is **not** included. You download it once with your own key (step 3), and the dashboard
@@ -194,22 +205,24 @@ python -m data_pipeline.bulk_download --sources MODIS_SP --start 2026-01-01 --en
 python -m data_pipeline.bulk_download --sources VIIRS_SNPP_SP VIIRS_NOAA20_SP VIIRS_NOAA21_SP --start 2026-01-01 --end 2026-07-31
 python -m data_pipeline.bulk_download --sources MODIS_NRT --start 2026-09-01 --end 2026-11-14
 python -m data_pipeline.bulk_download --sources VIIRS_SNPP_NRT --start 2026-08-01 --end 2026-11-02
+python -m data_pipeline.bulk_download --sources VIIRS_NOAA20_NRT VIIRS_NOAA21_NRT --start 2026-08-01 --end 2026-11-14
 ```
 
-Near-real-time data may be revised by NASA, and the most recent month is shown as incomplete until it ends.
+Every satellite's product must cover a month for the month to count as complete, so download the near-real-time files for all of them. Near-real-time data may be revised by NASA, and the most recent month is shown as incomplete until it ends.
 
-**3c. (Optional) the rest of West Africa.** A second, larger download for the whole region (about 3,000 requests and roughly 40 million
-detections, 1.5 to 2 hours, about 4 GB). First fetch the national outlines (a few seconds), then download MODIS and VIIRS for the region's
+**3c. (Optional) the rest of West Africa.** A second, much larger download for the whole region (about 4,000 requests and tens of millions of
+detections, several hours, about 6 GB). First fetch the national outlines (a few seconds), then download MODIS and all the VIIRS satellites for the region's
 bounding box into a separate folder:
 
 ```bash
 python -m data_pipeline.countries            # writes data/reference/WA_ADM0.geojson and prints the download area
 python -m data_pipeline.bulk_download --sources MODIS_SP --start 2000-11-01 --end 2025-12-31 "--area=-25.61,4.02,16.25,27.61" --output-dir data/raw/firms_wa
-python -m data_pipeline.bulk_download --sources VIIRS_SNPP_SP --end 2025-12-31 "--area=-25.61,4.02,16.25,27.61" --output-dir data/raw/firms_wa
+python -m data_pipeline.bulk_download --sources VIIRS_SNPP_SP VIIRS_NOAA20_SP VIIRS_NOAA21_SP --end 2025-12-31 "--area=-25.61,4.02,16.25,27.61" --output-dir data/raw/firms_wa
 ```
 
-(Add the 2026 near-real-time commands from step 3b with the same `--area` and `--output-dir`.) Downloads run at the same quota limit, so the script pauses by
-itself; you can run several copies on different date ranges to go faster while staying under NASA's limit.
+(Add the 2026 commands from step 3b with the same `--area` and `--output-dir`.) Downloads run at NASA's quota limit (5,000 transactions per 10 minutes), so the
+script pauses by itself and retries timeouts; you can run several copies on different date ranges to finish sooner while staying under the limit.
+Each response covers the whole region, so they are large (about 6 MB per five days).
 
 > **Want to try it quickly first?** Download a shorter record, for example
 > `--sources MODIS_SP VIIRS_SNPP_SP --start 2018-01-01 --end 2025-12-31`, and carry on. The dashboard works, but
@@ -226,6 +239,8 @@ This cleans the raw files, clips them to Ghana's outline and 16 regions, harmoni
 calendar and the unusual-month analysis, validates the result, runs the sensitivity checks and fetches rainfall
 context from NASA POWER (that last step needs internet and is skipped with a warning if you are offline). Expect
 roughly **10 to 20 minutes** on the full record. Outputs go to `data/processed/`. Re-run it whenever you download more data.
+All satellites are used by default; `--steady-only` restricts the whole analysis to Terra, Aqua and Suomi-NPP, and `--skip-process` re-runs only
+the later steps when the raw files have not changed.
 
 **4b. (Optional) process West Africa:**
 
@@ -233,7 +248,7 @@ roughly **10 to 20 minutes** on the full record. Outputs go to `data/processed/`
 python -m data_pipeline.westafrica
 ```
 
-This assigns every detection to its country, harmonizes on a 5 km grid and builds the same calendar analytics for the 16 countries and a
+It takes a while on the full record (tens of minutes). This assigns every detection to its country, harmonizes on a 5 km grid and builds the same calendar analytics for the 16 countries and a
 West Africa total. It processes month by month, so memory stays modest, and it can be stopped and re-run. Outputs go to `data/processed/wa/`.
 
 ### Step 5. Start the app
@@ -276,12 +291,14 @@ Place search ships with a prepared gazetteer in `data/reference/`. To rebuild it
 | **Methodology** | the method, its limits and credits |
 
 Controls in the header: **Find a place** (type a town, city or country, or **latitude, longitude** such as `6.69, -1.62`; choose a 10, 25 or 50 km
-area), **Area** (Ghana first, then its regions, then West Africa and its countries), **Sensor** (combined, MODIS or VIIRS) and **Grid** (1, 2 or 5 km;
+area), **Area** (Ghana first, then its regions, then West Africa and its countries), **Sensor view** (all satellites, the steady set Terra, Aqua and Suomi-NPP, MODIS only, or VIIRS only) and **Grid** (1, 2 or 5 km;
 outside Ghana only 5 km exists). Reading the calendar:
 
 - Colour is the number of active cell-days; brighter means more.
 - `▲` / `▼` mark months that are unusually high or low compared with the same month in other years.
 - Hatched squares are incomplete; **dashed squares are estimated** (before VIIRS existed).
+- **+N20** and **+N21** beside 2018 and 2023 mark when NOAA-20 and NOAA-21 joined: counts rise from those years because more satellites are looking, not because there was
+  more fire. The ▲/▼ flags are judged on the steady set, so they are not affected.
 - Click any month to see its details and a comparison with the same month in other years.
 - The **Hotspots detected** switch shows raw satellite detections instead of active cell-days (not comparable across sensors).
 - The **Colours** menu offers Inferno, Viridis and Cividis. Numbers and ▲/▼ symbols are always printed, so colour is never the only signal.
@@ -317,12 +334,13 @@ frontend (React + Vite)            the dashboard
 2. **Clean** them: required fields, valid coordinates, one UTC timestamp, exact duplicates removed (overlapping
    windows create some), and every exclusion logged with a reason.
 3. **Clip** to Ghana's real outline and assign each detection to one of its 16 regions (geoBoundaries).
-4. **Harmonize**: place both sensors on one grid and one UTC day, and count active cell-days. By default only
-   Terra, Aqua and Suomi-NPP are used, so satellites that joined later cannot create fake trends.
+4. **Harmonize**: place both sensors on one grid and one UTC day, and count active cell-days. Every satellite is counted,
+   and each cell-day also keeps its steady-set count (Terra, Aqua, Suomi-NPP only).
 5. **Complete months only**: a month counts as complete only if the downloaded archive covers all of it for every
    selected sensor. A quiet day is not treated as missing data.
 6. **Compare with history**: each month is scored against the same calendar month in other years (median and MAD
-   on a log scale). The "unusual" threshold is calibrated so ordinary months are falsely flagged about 1% of the time.
+   on a log scale) **on the steady set**, so satellites that joined later cannot raise false alarms. The "unusual" threshold is calibrated so
+   ordinary months are falsely flagged about 1% of the time.
 7. **Bridge 2002 to 2011**: estimate the combined-scale value from MODIS, with a stated range and a back-test.
 
 The full method, validation results and design decisions are in [docs/methodology.md](docs/methodology.md).
@@ -331,7 +349,7 @@ The full method, validation results and design decisions are in [docs/methodolog
 
 ## API quick reference
 
-The API is read-only. Most endpoints accept `grid` (`1km|2km|5km`), `region`, `sensor` (`harmonized|modis|viirs`)
+The API is read-only. Most endpoints accept `grid` (`1km|2km|5km`), `region`, `sensor` (`harmonized|steady|modis|viirs`)
 and an optional `bbox=west,south,east,north`. Full interactive documentation: http://localhost:8000/docs.
 
 | Endpoint | Returns |
@@ -386,6 +404,8 @@ are never used to support scientific claims.
 | `ModuleNotFoundError: pandas` | The environment is not activated, or step 2 was skipped. |
 | Port 8000 or 5173 already in use | Another copy is running. Stop it, or start the API on another port and change the proxy target in `frontend/vite.config.ts`. |
 | Only Ghana appears in the Area menu | West Africa has not been processed: do steps 3c and 4b. |
+| Counts jump in 2018 and 2023 | Expected: NOAA-20 and NOAA-21 joined and add detections. Use *Sensor view: Steady set* to compare years like for like. |
+| Recent months show as incomplete | A month is complete only when every satellite's product covers it: download the near-real-time files for all satellites (step 3b), then re-run step 4. |
 | Calendar still starts in 2012 | The 2000 to 2011 MODIS data was not downloaded, or `run_all` was not re-run afterwards. |
 
 ---
